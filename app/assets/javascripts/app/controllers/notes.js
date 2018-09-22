@@ -218,10 +218,10 @@ angular.module('app')
       return this.noteFilter.text && this.noteFilter.text.length > 0;
     }
 
-    this.createNewNote = function() {
+    this.createNewNote = function(title = "") {
       // The "Note X" counter is based off this.tag.notes.length, but sometimes, what you see in the list is only a subset.
       // We can use this.visibleNotes().length, but that only accounts for non-paginated results, so first 15 or so.
-      var title = "Note" + (this.tag.notes ? (" " + (this.tag.notes.length + 1)) : "");
+      if (title == "") {title = "Note" + (this.tag.notes ? (" " + (this.tag.notes.length + 1)) : "") };
       let newNote = modelManager.createItem({content_type: "Note", content: {text: "", title: title}});
       newNote.dummy = true;
       this.newNote = newNote;
@@ -263,6 +263,15 @@ angular.module('app')
       // For Desktop, performing a search right away causes input to lose focus.
       // We wait until user explicity hits enter before highlighting desktop search results.
       desktopManager.searchText(this.noteFilter.text);
+    }
+
+    /* UI sugar stolen from Notational Velocity: if the user presses enter in the search box
+    and there are no search results, create a note with the search as the title */
+    this.onCreateFromSearch = function() {
+      if ( this.tag.notes.filter((i) => {return i.visible;}).length == 0) {
+        this.createNewNote(this.noteFilter.text);
+        console.log("Creating from search");
+      }
     }
 
     this.clearFilterText = function() {
