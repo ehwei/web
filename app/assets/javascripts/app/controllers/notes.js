@@ -415,6 +415,30 @@ angular.module('app')
       }
     }
 
+    this.onSearchBoxKeyUp = function(e) {
+      if (e.keyCode == 13) { //enter
+        this.onCreateFromSearch()
+        this.onFilterEnter();
+      } else if (e.keyCode == 38) { //up arrow
+        this.nudgeNoteSelection(-1);
+      } else if (e.keyCode == 40) { //down arrow
+        this.nudgeNoteSelection(1)
+      }
+    }
+
+    this.nudgeNoteSelection = function(dir = 1) {
+      var visibleNotes = this.visibleNotes();
+      var i = this.selectedIndex;
+      i += dir; 
+      if (i < 0) { i = 0}
+      if (i >= visibleNotes.length) {
+        i = visibleNotes.length - 1;
+      }
+      if(visibleNotes.length > 0) {
+        this.selectNote(visibleNotes[i]);
+      }
+    }
+
     this.clearFilterText = function() {
       this.noteFilter.text = '';
       this.onFilterEnter();
