@@ -426,6 +426,14 @@ angular.module('app')
       }
     }
 
+    this.onNotesListKeyUp = function(e) {
+      if (e.keyCode == 38) { //up arrow
+        this.nudgeNoteSelection(-1);
+      } else if (e.keyCode == 40) { //down arrow
+        this.nudgeNoteSelection(1)
+      }
+    }
+
     this.nudgeNoteSelection = function(dir = 1) {
       var visibleNotes = this.visibleNotes();
       var i = this.selectedIndex;
