@@ -14,8 +14,7 @@
         "select-on-click" => "true", "ng-disabled" => "ctrl.note.locked", "spellcheck" => "false"}
 
     #save-status
-      .message{"ng-class" => "{'warning sk-bold': ctrl.syncTakingTooLong, 'danger sk-bold': ctrl.saveError}"} {{ctrl.noteStatus.message}}
-      .desc{"ng-show" => "ctrl.noteStatus.desc"} {{ctrl.noteStatus.desc}}
+      .message{"ng-class" => "{'warning sk-bold': ctrl.syncTakingTooLong, 'danger sk-bold': ctrl.saveError}"} {{ctrl.saveError ? ctrl.noteStatus.message : ""}}
 
     .editor-tags
       #note-tags-component-container{"ng-if" => "ctrl.tagsComponent"}
