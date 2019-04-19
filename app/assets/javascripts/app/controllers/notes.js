@@ -447,6 +447,10 @@ angular.module('app')
       }
       if(visibleNotes.length > 0) {
         this.selectNote(visibleNotes[i]);
+        //allow time to redraw before scrolling; .selected doesn't update synchronously
+        setTimeout(() => {
+          document.querySelector("div.scrollable .selected .name").scrollIntoViewIfNeeded({block:"start"});
+        },100);
       }
     }
 
