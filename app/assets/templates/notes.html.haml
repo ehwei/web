@@ -1,4 +1,4 @@
-.sn-component.section.notes#notes-column{"aria-label" => "Notes","ng-keyup" => "ctrl.onNotesListKeyUp($event)", "tabIndex" => 0}
+.sn-component.section.notes#notes-column{"aria-label" => "Notes","ng-keydown" => "ctrl.onNotesListKeyDown($event)", "tabIndex" => 0}
   .content
     .section-title-bar#notes-title-bar
       .padded
@@ -10,7 +10,7 @@
         .filter-section{"role" => "search"}
           %input.filter-bar#search-bar.mousetrap{"select-on-click" => "true", "ng-model" => "ctrl.noteFilter.text", "placeholder" => "Search",
           "ng-change" => "ctrl.filterTextChanged()", "lowercase" => "true", "ng-blur" => "ctrl.onFilterEnter()",
-          "title" => "Searches notes in the currently selected tag. Press enter to create a new note!", "ng-keyup" => "ctrl.onSearchBoxKeyUp($event)"}
+          "title" => "Searches notes in the currently selected tag. Press enter to create a new note!", "ng-keydown" => "ctrl.onSearchBoxKeyDown($event)"}
             #search-clear-button{"ng-show" => "ctrl.noteFilter.text", "ng-click" => "ctrl.clearFilterText();"} ✕
       .sn-component#notes-menu-bar
         .sk-app-bar.no-edges

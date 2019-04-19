@@ -415,7 +415,7 @@ angular.module('app')
       }
     }
 
-    this.onSearchBoxKeyUp = function(e) {
+    this.onSearchBoxKeyDown = function(e) {
       if (e.keyCode == 13) { //enter
         this.onCreateFromSearch(); //no-op if no need to create
         this.onFilterEnter();
@@ -426,7 +426,7 @@ angular.module('app')
       }
     }
 
-    this.onNotesListKeyUp = function(e) {
+    this.onNotesListKeyDown = function(e) {
       if (e.keyCode == 38) { //up arrow
         this.nudgeNoteSelection(-1);
       } else if (e.keyCode == 40) { //down arrow
