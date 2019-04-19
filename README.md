@@ -1,4 +1,33 @@
-# Standard Notes
+# Standard Velocity
+
+### A Standard Notes fork
+
+What is this?
+
+ - Standard Notes, but designed for speed. Inspired heavily by Notational Velocity.
+
+ What's different?
+
+ - Press CTRL-F to jump to the search box
+ - Press enter in the search box to create a note
+ - When you select a note, it's auto-focused
+ - Press the cursor keys to move in search results
+ - Press delete to trash a note from the notelist
+ - Much more compact notelist so you can see more
+
+Why a fork instead of individual Extensions and Themes?
+
+ - Some things I want to do aren't possible (right now) any other way
+ - It's easier (and therefore faster) to do
+
+Is there a desktop version?
+
+ - Sure. Replace app/node_modules/standard-velocity-web in the desktop repo with this and build as normal.
+
+Is there a mobile version?
+
+ - Not yet. The mobile version will need to work slightly differently anyway, lacking a keyboard. 
+
 ### A safe and private place for your life's work.
 
 Standard Notes is a simple and private notes app available on most platforms, including Web, Mac, Windows, Linux, iOS, and Android. It focuses on simplicity, and encrypts data locally before it ever touches a cloud. This means no one can read your notes but you (not even us).
