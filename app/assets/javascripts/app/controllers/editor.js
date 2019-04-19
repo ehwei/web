@@ -387,9 +387,8 @@ angular.module('app')
           }
 
           let title = this.note.safeTitle().length ? `'${this.note.title}'` : "this note";
-          let message = permanently ? `Are you sure you want to permanently delete ${title}?`
-            : `Are you sure you want to move ${title} to the trash?`
-          if(confirm(message)) {
+          let message = `Are you sure you want to permanently delete ${title}?`;
+          if(!permanently || confirm(message)) {
             if(permanently) {
               this.remove()(this.note);
             } else {
@@ -415,7 +414,7 @@ angular.module('app')
       this.changesMade({bypassDebouncer: true, dontUpdateClientModified: true, dontUpdatePreviews: true});
     }
 
-    this.deleteNotePermanantely = function() {
+    this.deleteNotePermanently = function() {
       this.deleteNote(true);
     }
 
