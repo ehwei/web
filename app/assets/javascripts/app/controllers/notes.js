@@ -401,9 +401,10 @@ angular.module('app')
 
     this.onFilterEnter = function() {
       // For Desktop, performing a search right away causes input to lose focus.
-      // We wait until user explicity hits enter before highlighting desktop search results.
+      // We wait until user explicitly hits enter before highlighting desktop search results.
       this.searchSubmitted = true;
       desktopManager.searchText(this.noteFilter.text);
+      document.getElementById("note-text-editor").focus();
     }
 
     /* UI sugar stolen from Notational Velocity: if the user presses enter in the search box
@@ -411,13 +412,12 @@ angular.module('app')
     this.onCreateFromSearch = function() {
       if ( this.tag.notes.filter((i) => {return i.visible;}).length == 0) {
         this.createNewNote(this.noteFilter.text);
-        console.log("Creating from search");
       }
     }
 
     this.onSearchBoxKeyUp = function(e) {
       if (e.keyCode == 13) { //enter
-        this.onCreateFromSearch()
+        this.onCreateFromSearch(); //no-op if no need to create
         this.onFilterEnter();
       } else if (e.keyCode == 38) { //up arrow
         this.nudgeNoteSelection(-1);
