@@ -431,6 +431,8 @@ angular.module('app')
         this.nudgeNoteSelection(-1);
       } else if (e.keyCode == 40) { //down arrow
         this.nudgeNoteSelection(1)
+      } else if (e.keyCode == 46 || e.keyCode == 8) { //delete or backspace
+        $rootScope.$emit("deleteNote");
       }
     }
 

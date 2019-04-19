@@ -117,6 +117,10 @@ angular.module('app')
       this.reloadComponentContext();
     }
 
+    $rootScope.$on('deleteNote', function(){
+      this.deleteNote();
+    }.bind(this));
+
     this.setNote = function(note, oldNote) {
       this.showExtensions = false;
       this.showMenu = false;
