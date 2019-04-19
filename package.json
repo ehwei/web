@@ -1,26 +1,27 @@
 {
   "name": "standard-notes-web",
-  "version": "2.3.12",
+  "version": "3.0.8",
+  "license": "AGPL-3.0-or-later",
   "repository": {
     "type": "git",
     "url": "https://github.com/standardnotes/web"
   },
   "scripts": {
-    "build": "grunt",
+    "build": "bundle install && npm install && grunt",
     "submodules": "git submodule update --init --force --remote",
     "test": "karma start karma.conf.js --single-run"
   },
   "devDependencies": {
-    "angular": "^1.6.1",
-    "angular-mocks": "^1.6.1",
+    "angular": "1.6.9",
     "babel-cli": "^6.18.0",
     "babel-plugin-angularjs-annotate": "^0.9.0",
     "babel-plugin-transform-runtime": "^6.23.0",
     "babel-preset-env": "^1.1.1",
     "babel-preset-es2015": "^6.24.1",
     "babel-preset-es2016": "^6.16.0",
-    "bower": "^1.8.0",
-    "grunt": "^1.0.1",
+    "chai": "^4.1.2",
+    "connect": "^3.6.6",
+    "grunt": "^1.0.3",
     "grunt-angular-templates": "^1.1.0",
     "grunt-babel": "^6.0.0",
     "grunt-browserify": "^5.0.0",
@@ -33,18 +34,11 @@
     "grunt-haml2html": "^0.3.1",
     "grunt-newer": "^1.2.0",
     "grunt-ng-annotate": "^3.0.0",
-    "jasmine": "^2.5.3",
-    "karma": "^2.0.5",
-    "karma-cli": "^1.0.1",
-    "karma-jasmine": "^1.1.0",
-    "karma-phantomjs-launcher": "^1.0.2",
-    "sn-stylekit": "1.0.15",
-    "standard-file-js": "0.3.16",
-    "sn-models": "0.1.9",
-    "connect": "^3.6.6",
     "mocha": "^5.2.0",
     "serve-static": "^1.13.2",
-    "chai": "^4.1.2"
-  },
-  "license": "GPL-3.0"
+    "sn-models": "0.1.14",
+    "sn-stylekit": "2.0.13",
+    "standard-file-js": "0.3.57",
+    "grunt-shell": "^2.1.0"
+  }
 }

@@ -28,9 +28,17 @@ class PanelResizer {
     scope.control.setLeft = function(value) {
       scope.setLeft(value);
     }
+
+    scope.control.flash = function() {
+      scope.flash();
+    }
+
+    scope.control.isCollapsed = function() {
+      return scope.isCollapsed();
+    }
   }
 
-  controller($scope, $element, modelManager, actionsManager, $timeout) {
+  controller($scope, $element, modelManager, actionsManager, $timeout, $compile) {
     'ngInject';
 
     let panel = document.getElementById($scope.panelId);
@@ -42,23 +50,33 @@ class PanelResizer {
     let resizerWidth = resizerColumn.offsetWidth;
     let minWidth = $scope.minWidth || resizerWidth;
     var pressed = false;
-    var startWidth = panel.scrollWidth, startX = 0, lastDownX = 0, collapsed, lastWidth = startWidth, startLeft, lastLeft;
+    var startWidth = panel.scrollWidth, startX = 0, lastDownX = 0, collapsed, lastWidth = startWidth, startLeft = panel.offsetLeft, lastLeft = startLeft;
     var appFrame;
 
+    $scope.isAtMaxWidth = function() {
+      return Math.round((lastWidth + lastLeft)) == Math.round(getParentRect().width);
+    }
+
+    $scope.isCollapsed = function() {
+      return lastWidth <= minWidth;
+    }
 
     // Handle Double Click Event
     var widthBeforeLastDblClick = 0;
     resizerColumn.ondblclick = () => {
-      var collapsed = $scope.isCollapsed();
       $timeout(() => {
-        if(collapsed) {
+        var preClickCollapseState = $scope.isCollapsed();
+        if(preClickCollapseState) {
           $scope.setWidth(widthBeforeLastDblClick || $scope.defaultWidth);
         } else {
           widthBeforeLastDblClick = lastWidth;
           $scope.setWidth(minWidth);
         }
+
         $scope.finishSettingWidth();
-        $scope.onResizeFinish()(lastWidth, lastLeft, $scope.isAtMaxWidth());
+
+        var newCollapseState = !preClickCollapseState;
+        $scope.onResizeFinish()(lastWidth, lastLeft, $scope.isAtMaxWidth(), newCollapseState);
       })
     }
 
@@ -81,7 +99,8 @@ class PanelResizer {
     }
 
     function reloadDefaultValues() {
-      startWidth = panel.scrollWidth;
+      startWidth = $scope.isAtMaxWidth() ? getParentRect().width : panel.scrollWidth;
+      lastWidth = startWidth;
       appFrame = document.getElementById("app").getBoundingClientRect();
     }
     reloadDefaultValues();
@@ -110,9 +129,9 @@ class PanelResizer {
         width = maxWidth;
       }
 
-      if(width == parentRect.width) {
-        panel.style.width = "100%";
-        panel.style.flexBasis = "100%";
+      if((Math.round(width + lastLeft)) == Math.round(parentRect.width)) {
+        panel.style.width = `calc(100% - ${lastLeft}px)`;
+        panel.style.flexBasis = `calc(100% - ${lastLeft}px)`;
       } else {
         panel.style.flexBasis = width + "px";
         panel.style.width = width + "px";
@@ -123,14 +142,6 @@ class PanelResizer {
       if(finish) {
         $scope.finishSettingWidth();
       }
-    }
-
-    $scope.isCollapsed = function() {
-      return lastWidth <= minWidth;
-    }
-
-    $scope.isAtMaxWidth = function() {
-      return lastWidth == getParentRect().width;
     }
 
     $scope.setLeft = function(left) {
@@ -151,7 +162,37 @@ class PanelResizer {
       }
     }
 
+    /*
+      If an iframe is displayed adjacent to our panel, and your mouse exits over the iframe,
+      document[onmouseup] is not triggered because the document is no longer the same over the iframe.
+      We add an invisible overlay while resizing so that the mouse context remains in our main document.
+     */
+    $scope.addInvisibleOverlay = function() {
+      if($scope.overlay) {
+        return;
+      }
+
+      $scope.overlay = $compile("<div id='resizer-overlay'></div>")($scope);
+      angular.element(document.body).prepend($scope.overlay);
+    }
+
+    $scope.removeInvisibleOverlay = function() {
+      if($scope.overlay) {
+        $scope.overlay.remove();
+        $scope.overlay = null;
+      }
+    }
+
+    $scope.flash = function() {
+      resizerColumn.classList.add("animate-opacity");
+      $timeout(() => {
+        resizerColumn.classList.remove("animate-opacity");
+      }, 3000)
+    }
+
     resizerColumn.addEventListener("mousedown", function(event){
+      $scope.addInvisibleOverlay();
+
       pressed = true;
       lastDownX = event.clientX;
       startWidth = panel.scrollWidth;
@@ -178,10 +219,7 @@ class PanelResizer {
     })
 
     function handleWidthEvent(event) {
-      var rect = panel.getBoundingClientRect();
-      var panelMaxX = rect.left + (startWidth || panel.style.maxWidth);
-
-      var x;
+      let x;
       if(event) {
         x = event.clientX;
       } else {
@@ -230,7 +268,9 @@ class PanelResizer {
       $scope.setWidth(newWidth, false);
     }
 
-    document.addEventListener("mouseup", function(event){
+    document.addEventListener("mouseup", (event) => {
+      $scope.removeInvisibleOverlay();
+
       if(pressed) {
         pressed = false;
         resizerColumn.classList.remove("dragging");
@@ -239,14 +279,13 @@ class PanelResizer {
         let isMaxWidth = $scope.isAtMaxWidth();
 
         if($scope.onResizeFinish) {
-          $scope.onResizeFinish()(lastWidth, lastLeft, isMaxWidth);
+          $scope.onResizeFinish()(lastWidth, lastLeft, isMaxWidth, $scope.isCollapsed());
         }
 
         $scope.finishSettingWidth();
       }
     })
   }
-
 }
 
 angular.module('app').directive('panelResizer', () => new PanelResizer);

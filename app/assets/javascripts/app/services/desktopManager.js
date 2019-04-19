@@ -10,6 +10,7 @@ class DesktopManager {
     this.$rootScope = $rootScope;
     this.timeout = $timeout;
     this.updateObservers = [];
+    this.componentActivationObservers = [];
 
     this.isDesktop = isDesktopApplication();
 
@@ -25,6 +26,10 @@ class DesktopManager {
         this.majorDataChangeHandler();
       }
     })
+  }
+
+  saveBackup() {
+    this.majorDataChangeHandler && this.majorDataChangeHandler();
   }
 
   getApplicationDataPath() {
@@ -78,8 +83,16 @@ class DesktopManager {
     this.searchHandler = handler;
   }
 
+  desktop_windowGainedFocus() {
+    this.$rootScope.$broadcast("window-gained-focus");
+  }
+
+  desktop_windowLostFocus() {
+    this.$rootScope.$broadcast("window-lost-focus");
+  }
+
   desktop_onComponentInstallationComplete(componentData, error) {
-    console.log("Web|Component Installation/Update Complete", componentData, error);
+    // console.log("Web|Component Installation/Update Complete", componentData, error);
 
     // Desktop is only allowed to change these keys:
     let permissableKeys = ["package_info", "local_url"];
@@ -106,7 +119,28 @@ class DesktopManager {
       for(var observer of this.updateObservers) {
         observer.callback(component);
       }
-    })
+    });
+  }
+
+  desktop_registerComponentActivationObserver(callback) {
+    var observer = {id: Math.random, callback: callback};
+    this.componentActivationObservers.push(observer);
+    return observer;
+  }
+
+  desktop_deregisterComponentActivationObserver(observer) {
+    _.pull(this.componentActivationObservers, observer);
+  }
+
+  /* Notify observers that a component has been registered/activated */
+  async notifyComponentActivation(component) {
+    var serializedComponent = await this.convertComponentForTransmission(component);
+
+    this.timeout(() => {
+      for(var observer of this.componentActivationObservers) {
+        observer.callback(serializedComponent);
+      }
+    });
   }
 
   /* Used to resolve "sn://" */
@@ -152,6 +186,13 @@ class DesktopManager {
     this.majorDataChangeHandler = handler;
   }
 
+  desktop_didBeginBackup() {
+    this.$rootScope.$broadcast("did-begin-local-backup");
+  }
+
+  desktop_didFinishBackup(success) {
+    this.$rootScope.$broadcast("did-finish-local-backup", {success: success});
+  }
 }
 
 angular.module('app').service('desktopManager', DesktopManager);

@@ -15,7 +15,20 @@ class PasswordWizard {
   controller($scope, modelManager, archiveManager, authManager, syncManager, $timeout) {
     'ngInject';
 
+    window.onbeforeunload = (e) => {
+      // Confirms with user to close tab before closing
+      return true;
+    };
+
+    $scope.$on("$destroy", function() {
+      window.onbeforeunload = null;
+    });
+
     $scope.dismiss = function() {
+      if($scope.lockContinue) {
+        alert("Cannot close window until pending tasks are complete.");
+        return;
+      }
       $scope.el.remove();
       $scope.$destroy();
     }
@@ -64,6 +77,15 @@ class PasswordWizard {
 
     $scope.continue = function() {
 
+      if($scope.lockContinue || $scope.isContinuing) {
+        return;
+      }
+
+      // isContinuing is a way to lock the continue function separate from lockContinue
+      // lockContinue can be locked by other places, but isContinuing is only lockable from within this function.
+
+      $scope.isContinuing = true;
+
       if($scope.step == FinishStep) {
         $scope.dismiss();
         return;
@@ -72,12 +94,17 @@ class PasswordWizard {
       let next = () => {
         $scope.step += 1;
         $scope.initializeStep($scope.step);
+
+        $scope.isContinuing = false;
       }
 
       var preprocessor = $scope.preprocessorForStep($scope.step);
       if(preprocessor) {
         preprocessor(() => {
           next();
+        }, () => {
+          // on fail
+          $scope.isContinuing = false;
         })
       } else {
         next();
@@ -90,7 +117,7 @@ class PasswordWizard {
 
     $scope.preprocessorForStep = function(step) {
       if(step == PasswordStep) {
-        return (callback) => {
+        return (onSuccess, onFail) => {
           $scope.showSpinner = true;
           $scope.continueTitle = "Generating Keys...";
           $timeout(() => {
@@ -98,7 +125,9 @@ class PasswordWizard {
               $scope.showSpinner = false;
               $scope.continueTitle = DefaultContinueTitle;
               if(success) {
-                callback();
+                onSuccess();
+              } else {
+                onFail && onFail();
               }
             });
           })
@@ -151,8 +180,15 @@ class PasswordWizard {
       let currentPassword = $scope.formData.currentPassword;
       let newPass = $scope.securityUpdate ? currentPassword : $scope.formData.newPassword;
 
+      if(!currentPassword || currentPassword.length == 0) {
+        alert("Please enter your current password.");
+        callback(false);
+        return;
+      }
+
       if($scope.changePassword) {
         if(!newPass || newPass.length == 0) {
+          alert("Please enter a new password.");
           callback(false);
           return;
         }

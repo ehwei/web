@@ -24,6 +24,11 @@ class AuthManager extends SFAuthManager {
 
     this.configureUserPrefs();
     this.checkForSecurityUpdate();
+
+    this.modelManager.addItemSyncObserver("user-prefs", "SN|UserPreferences", (allItems, validItems, deletedItems, source, sourceKey) => {
+      this.userPreferencesDidChange();
+    });
+
   }
 
   offline() {
@@ -44,7 +49,7 @@ class AuthManager extends SFAuthManager {
       this.storageManager.setItemsMode(StorageManager.Ephemeral);
     } else {
       this.storageManager.setModelStorageMode(StorageManager.Fixed);
-      this.storageManager.setItemsMode(this.storageManager.hasPasscode() ? StorageManager.FixedEncrypted : StorageManager.Fixed);
+      this.storageManager.setItemsMode(this.storageManager.bestStorageMode());
       this.storageManager.setItem("ephemeral", JSON.stringify(false), StorageManager.Fixed);
     }
   }
@@ -92,6 +97,13 @@ class AuthManager extends SFAuthManager {
     }
   }
 
+  async verifyAccountPassword(password) {
+    let authParams = await this.getAuthParams();
+    let keys = await SFJS.crypto.computeEncryptionKeysForUser(password, authParams);
+    let success = keys.mk === (await this.keys()).mk;
+    return success;
+  }
+
   async checkForSecurityUpdate() {
     if(this.offline()) {
       return false;
@@ -129,7 +141,6 @@ class AuthManager extends SFAuthManager {
     let contentTypePredicate = new SFPredicate("content_type", "=", prefsContentType);
     this.singletonManager.registerSingleton([contentTypePredicate], (resolvedSingleton) => {
       this.userPreferences = resolvedSingleton;
-      this.userPreferencesDidChange();
     }, (valueCallback) => {
       // Safe to create. Create and return object.
       var prefs = new SFItem({content_type: prefsContentType});

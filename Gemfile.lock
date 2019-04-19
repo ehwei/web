@@ -42,7 +42,6 @@ GEM
       sshkit (>= 1.6.1, != 1.7.0)
     arel (8.0.0)
     bindex (0.5.0)
-    bower-rails (0.10.0)
     builder (3.2.3)
     byebug (10.0.2)
     capistrano (3.10.2)
@@ -76,6 +75,7 @@ GEM
     erubi (1.7.1)
     execjs (2.7.0)
     ffi (1.9.23)
+    ffi (1.9.23-x64-mingw32)
     globalid (0.4.1)
       activesupport (>= 4.2.0)
     haml (5.0.4)
@@ -98,6 +98,8 @@ GEM
     net-ssh (4.2.0)
     nio4r (2.3.0)
     nokogiri (1.8.2)
+      mini_portile2 (~> 2.3.0)
+    nokogiri (1.8.2-x64-mingw32)
       mini_portile2 (~> 2.3.0)
     non-stupid-digest-assets (1.0.9)
       sprockets (>= 2.0)
@@ -148,8 +150,7 @@ GEM
     sdoc (0.4.2)
       json (~> 1.7, >= 1.7.7)
       rdoc (~> 4.0)
-    secure_headers (5.0.5)
-      useragent (>= 0.15.0)
+    secure_headers (6.0.0)
     sidekiq (5.1.3)
       concurrent-ruby (~> 1.0)
       connection_pool (~> 2.2, >= 2.2.0)
@@ -173,9 +174,10 @@ GEM
     tilt (2.0.8)
     tzinfo (1.2.5)
       thread_safe (~> 0.1)
+    tzinfo-data (1.2018.7)
+      tzinfo (>= 1.0.0)
     uglifier (4.1.10)
       execjs (>= 0.3.0, < 3)
-    useragent (0.16.10)
     web-console (3.5.1)
       actionview (>= 5.0)
       activemodel (>= 5.0)
@@ -187,9 +189,9 @@ GEM
 
 PLATFORMS
   ruby
+  x64-mingw32
 
 DEPENDENCIES
-  bower-rails (~> 0.10.0)
   byebug
   capistrano
   capistrano-bundler
@@ -209,8 +211,9 @@ DEPENDENCIES
   sdoc (~> 0.4.0)
   secure_headers
   spring
+  tzinfo-data
   uglifier
   web-console (= 3.5.1)
 
 BUNDLED WITH
-   1.16.3
+   1.17.1

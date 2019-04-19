@@ -22,10 +22,13 @@ angular.module('app')
       }
     }
   })
-  .controller('EditorCtrl', function ($sce, $timeout, authManager, $rootScope, actionsManager, syncManager, modelManager, themeManager, componentManager, storageManager, sessionHistory) {
+  .controller('EditorCtrl', function ($sce, $timeout, authManager, $rootScope, actionsManager,
+    syncManager, modelManager, themeManager, componentManager, storageManager, sessionHistory, privilegesManager) {
 
     this.spellcheck = true;
     this.componentManager = componentManager;
+    this.componentStack = [];
+    this.isDesktop = isDesktopApplication();
 
     $rootScope.$on("sync:taking-too-long", function(){
       this.syncTakingTooLong = true;
@@ -54,7 +57,7 @@ angular.module('app')
       // Before checking if isMappingSourceRetrieved, we check if this item was deleted via a local source,
       // such as alternating uuids during sign in. Otherwise, we only want to make interface updates if it's a
       // remote retrieved source.
-      if(this.note.deleted) {
+      if(this.note.deleted || this.note.content.trashed) {
         $rootScope.notifyDelete();
         return;
       }
@@ -87,11 +90,14 @@ angular.module('app')
       }
     });
 
-    // Observe editor changes to see if the current note should update its editor
 
     modelManager.addItemSyncObserver("editor-component-observer", "SN|Component", (allItems, validItems, deletedItems, source) => {
       if(!this.note) { return; }
 
+      // Reload componentStack in case new ones were added or removed
+      this.reloadComponentStackArray();
+
+      // Observe editor changes to see if the current note should update its editor
       var editors = allItems.filter(function(item) {
         return item.isEditor();
       });
@@ -157,30 +163,24 @@ angular.module('app')
     }
 
     this.editorForNote = function(note) {
-      let editors = componentManager.componentsForArea("editor-editor");
-      for(var editor of editors) {
-        if(editor.isExplicitlyEnabledForItem(note)) {
-          return editor;
-        }
-      }
-
-      // No editor found for note. Use default editor, if note does not prefer system editor
-      if(!note.getAppDataItem("prefersPlainEditor")) {
-        return editors.filter((e) => {return e.isDefaultEditor()})[0];
-      }
-    }
-
-    this.onEditorMenuClick = function() {
-      // App bar menu item click
-      this.showEditorMenu = !this.showEditorMenu;
-      this.showMenu = false;
-      this.showExtensions = false;
+      return componentManager.editorForNote(note);
     }
 
     this.closeAllMenus = function() {
       this.showEditorMenu = false;
       this.showMenu = false;
       this.showExtensions = false;
+    }
+
+    this.toggleMenu = function(menu) {
+      this[menu] = !this[menu];
+
+      let allMenus = ['showMenu', 'showEditorMenu', 'showExtensions', 'showSessionHistory'];
+      for(var candidate of allMenus) {
+        if(candidate != menu) {
+          this[candidate] = false;
+        }
+      }
     }
 
     this.editorMenuOnSelect = function(component) {
@@ -243,34 +243,19 @@ angular.module('app')
 
     var statusTimeout;
 
-    this.save = function(dontUpdateClientModified) {
-      var note = this.note;
-      note.dummy = false;
-      // Make sure the note exists. A safety measure, as toggling between tags triggers deletes for dummy notes.
-      // Race conditions have been fixed, but we'll keep this here just in case.
-      if(!modelManager.findItem(note.uuid)) {
-        alert("The note you are attempting to save can not be found or has been deleted. Changes you make will not be synced. Please copy this note's text and start a new note.");
-        return;
-      }
-
-      this.saveNote(note, (success) => {
-        if(success) {
-          if(statusTimeout) $timeout.cancel(statusTimeout);
-          statusTimeout = $timeout(() => {
-            this.showAllChangesSavedStatus();
-          }, 200)
-        } else {
-          if(statusTimeout) $timeout.cancel(statusTimeout);
-          statusTimeout = $timeout(() => {
-            this.showErrorStatus();
-          }, 200)
-        }
-      }, dontUpdateClientModified);
-    }
-
-    this.saveNote = function(note, callback, dontUpdateClientModified) {
+    this.saveNote = function(note, callback, dontUpdateClientModified, dontUpdatePreviews) {
       // We don't want to update the client modified date if toggling lock for note.
       note.setDirty(true, dontUpdateClientModified);
+
+      if(!dontUpdatePreviews) {
+        let limit = 80;
+        var text = note.text || "";
+        var truncate = text.length > limit;
+        note.content.preview_plain = text.substring(0, limit) + (truncate ? "..." : "");
+
+        // Clear dynamic previews if using plain editor
+        note.content.preview_html = null;
+      }
 
       syncManager.sync().then((response) => {
         if(response && response.error) {
@@ -290,15 +275,10 @@ angular.module('app')
       })
     }
 
-    this.saveTitle = function($event) {
-      $event.target.blur();
-      this.save($event);
-      this.focusEditor();
-    }
-
-    var saveTimeout;
-    this.changesMade = function({bypassDebouncer, dontUpdateClientModified} = {}) {
-      this.note.dummy = false;
+    let saveTimeout;
+    this.changesMade = function({bypassDebouncer, dontUpdateClientModified, dontUpdatePreviews} = {}) {
+      let note = this.note;
+      note.dummy = false;
 
       /* In the case of keystrokes, saving should go through a debouncer to avoid frequent calls.
         In the case of deleting or archiving a note, it should happen immediately before the note is switched out
@@ -308,18 +288,38 @@ angular.module('app')
       // In the case of archiving a note, the note is saved immediately, then switched to another note.
       // Usually note.hasChanges is set back to false after the saving delay, but in this case, because there is no delay,
       // we set it to false immediately so that it is not saved twice: once now, and the other on setNote in oldNote.hasChanges.
-      this.note.hasChanges = bypassDebouncer ? false : true;
+      note.hasChanges = bypassDebouncer ? false : true;
 
       if(saveTimeout) $timeout.cancel(saveTimeout);
       if(statusTimeout) $timeout.cancel(statusTimeout);
       saveTimeout = $timeout(() => {
         this.showSavingStatus();
-        this.save(dontUpdateClientModified);
+        note.dummy = false;
+        // Make sure the note exists. A safety measure, as toggling between tags triggers deletes for dummy notes.
+        // Race conditions have been fixed, but we'll keep this here just in case.
+        if(!modelManager.findItem(note.uuid)) {
+          alert("The note you are attempting to save can not be found or has been deleted. Changes you make will not be synced. Please copy this note's text and start a new note.");
+          return;
+        }
+
+        this.saveNote(note, (success) => {
+          if(success) {
+            if(statusTimeout) $timeout.cancel(statusTimeout);
+            statusTimeout = $timeout(() => {
+              this.showAllChangesSavedStatus();
+            }, 200)
+          } else {
+            if(statusTimeout) $timeout.cancel(statusTimeout);
+            statusTimeout = $timeout(() => {
+              this.showErrorStatus();
+            }, 200)
+          }
+        }, dontUpdateClientModified, dontUpdatePreviews);
       }, delay)
     }
 
     this.showSavingStatus = function() {
-      this.noteStatus = $sce.trustAsHtml("Saving...");
+      this.noteStatus = {message: "Saving..."};
     }
 
     this.showAllChangesSavedStatus = function() {
@@ -330,7 +330,7 @@ angular.module('app')
       if(authManager.offline()) {
         status += " (offline)";
       }
-      this.noteStatus = $sce.trustAsHtml(status);
+      this.noteStatus = {message: status};
     }
 
     this.showErrorStatus = function(error) {
@@ -342,7 +342,7 @@ angular.module('app')
       }
       this.saveError = true;
       this.syncTakingTooLong = false;
-      this.noteStatus = $sce.trustAsHtml(`<span class='error bold'>${error.message}</span><br>${error.desc}`)
+      this.noteStatus = error;
     }
 
     this.contentChanged = function() {
@@ -350,8 +350,14 @@ angular.module('app')
       this.changesMade({bypassDebouncer: true});
     }
 
-    this.nameChanged = function() {
-      this.changesMade();
+    this.onTitleEnter = function($event) {
+      $event.target.blur();
+      this.onTitleChange();
+      this.focusEditor();
+    }
+
+    this.onTitleChange = function() {
+      this.changesMade({dontUpdatePreviews: true});
     }
 
     this.onNameFocus = function() {
@@ -372,28 +378,89 @@ angular.module('app')
       }
     }
 
-    this.deleteNote = function() {
-      let title = this.note.safeTitle().length ? `'${this.note.title}'` : "this note";
-      if(confirm(`Are you sure you want to delete ${title}?`)) {
-        this.remove()(this.note);
-        this.showMenu = false;
+    this.deleteNote = async function(permanently) {
+      let run = () => {
+        $timeout(() => {
+          if(this.note.locked) {
+            alert("This note is locked. If you'd like to delete it, unlock it, and try again.");
+            return;
+          }
+
+          let title = this.note.safeTitle().length ? `'${this.note.title}'` : "this note";
+          let message = permanently ? `Are you sure you want to permanently delete ${title}?`
+            : `Are you sure you want to move ${title} to the trash?`
+          if(confirm(message)) {
+            if(permanently) {
+              this.remove()(this.note);
+            } else {
+              this.note.content.trashed = true;
+              this.changesMade({bypassDebouncer: true, dontUpdateClientModified: true, dontUpdatePreviews: true});
+            }
+            this.showMenu = false;
+          }
+        });
+      }
+
+      if(await privilegesManager.actionRequiresPrivilege(PrivilegesManager.ActionDeleteNote)) {
+        privilegesManager.presentPrivilegesModal(PrivilegesManager.ActionDeleteNote, () => {
+          run();
+        });
+      } else {
+        run();
+      }
+    }
+
+    this.restoreTrashedNote = function() {
+      this.note.content.trashed = false;
+      this.changesMade({bypassDebouncer: true, dontUpdateClientModified: true, dontUpdatePreviews: true});
+    }
+
+    this.deleteNotePermanantely = function() {
+      this.deleteNote(true);
+    }
+
+    this.getTrashCount = function() {
+      return modelManager.trashedItems().length;
+    }
+
+    this.emptyTrash = function() {
+      let count = this.getTrashCount();
+      if(confirm(`Are you sure you want to permanently delete ${count} note(s)?`)) {
+        modelManager.emptyTrash();
+        syncManager.sync();
       }
     }
 
     this.togglePin = function() {
       this.note.setAppDataItem("pinned", !this.note.pinned);
-      this.changesMade();
+      this.changesMade({bypassDebouncer: true, dontUpdatePreviews: true});
     }
 
     this.toggleLockNote = function() {
       this.note.setAppDataItem("locked", !this.note.locked);
-      var dontUpdateClientModified = true;
-      this.changesMade({dontUpdateClientModified});
+      this.changesMade({bypassDebouncer: true, dontUpdateClientModified: true, dontUpdatePreviews: true});
+    }
+
+    this.toggleProtectNote = function() {
+      this.note.content.protected = !this.note.content.protected;
+      this.changesMade({bypassDebouncer: true, dontUpdateClientModified: true, dontUpdatePreviews: true});
+
+      // Show privilegesManager if Protection is not yet set up
+      privilegesManager.actionHasPrivilegesConfigured(PrivilegesManager.ActionViewProtectedNotes).then((configured) => {
+        if(!configured) {
+          privilegesManager.presentPrivilegesManagementModal();
+        }
+      })
+    }
+
+    this.toggleNotePreview = function() {
+      this.note.content.hidePreview = !this.note.content.hidePreview;
+      this.changesMade({bypassDebouncer: true, dontUpdateClientModified: true, dontUpdatePreviews: true});
     }
 
     this.toggleArchiveNote = function() {
       this.note.setAppDataItem("archived", !this.note.archived);
-      this.changesMade({bypassDebouncer: true});
+      this.changesMade({bypassDebouncer: true, dontUpdatePreviews: true});
       $rootScope.$broadcast("noteArchived");
     }
 
@@ -455,19 +522,22 @@ angular.module('app')
 
     /* Resizability */
 
-    this.resizeControl = {};
+    this.leftResizeControl = {};
+    this.rightResizeControl = {};
 
-    this.onPanelResizeFinish = function(width, left, isMaxWidth) {
+    this.onPanelResizeFinish = (width, left, isMaxWidth) => {
       if(isMaxWidth) {
         authManager.setUserPrefValue("editorWidth", null);
       } else {
         if(width !== undefined && width !== null) {
           authManager.setUserPrefValue("editorWidth", width);
+          this.leftResizeControl.setWidth(width);
         }
       }
 
       if(left !== undefined && left !== null) {
         authManager.setUserPrefValue("editorLeft", left);
+        this.rightResizeControl.setLeft(left);
       }
       authManager.syncUserPreferences();
     }
@@ -478,8 +548,12 @@ angular.module('app')
 
     this.loadPreferences = function() {
       this.monospaceFont = authManager.getUserPrefValue("monospaceFont", "monospace");
-      this.spellcheck = authManager.getUserPrefValue("spellcheck", true);
-      this.marginResizersEnabled = authManager.getUserPrefValue("marginResizersEnabled", false);
+
+      // On desktop application, disable spellcheck by default, as it is not performant.
+      let defaultSpellcheckStatus = isDesktopApplication() ? false : true;
+      this.spellcheck = authManager.getUserPrefValue("spellcheck", defaultSpellcheckStatus);
+
+      this.marginResizersEnabled = authManager.getUserPrefValue("marginResizersEnabled", true);
 
       if(!document.getElementById("editor-content")) {
         // Elements have not yet loaded due to ng-if around wrapper
@@ -491,12 +565,14 @@ angular.module('app')
       if(this.marginResizersEnabled) {
         let width = authManager.getUserPrefValue("editorWidth", null);
         if(width !== null) {
-          this.resizeControl.setWidth(width);
+          this.leftResizeControl.setWidth(width);
+          this.rightResizeControl.setWidth(width);
         }
 
         let left = authManager.getUserPrefValue("editorLeft", null);
         if(left !== null) {
-          this.resizeControl.setLeft(left);
+          this.leftResizeControl.setLeft(left);
+          this.rightResizeControl.setLeft(left);
         }
       }
     }
@@ -533,6 +609,11 @@ angular.module('app')
             this.reloadFont();
           })
         }, 0)
+      } else if(key == "marginResizersEnabled" && this[key] == true) {
+        $timeout(() => {
+          this.leftResizeControl.flash();
+          this.rightResizeControl.flash();
+        })
       }
     }
 
@@ -576,7 +657,9 @@ angular.module('app')
         this.reloadComponentContext();
       }
     }, contextRequestHandler: (component) => {
-      return this.note;
+      if(component == this.selectedEditor || component == this.tagsComponent || this.componentStack.includes(component)) {
+        return this.note;
+      }
     }, focusHandler: (component, focused) => {
       if(component.isEditor() && focused) {
         this.closeAllMenus();
@@ -637,9 +720,18 @@ angular.module('app')
       }
     }});
 
+    this.reloadComponentStackArray = function() {
+      this.componentStack = componentManager.componentsForArea("editor-stack").sort((a, b) => {
+        // Careful here. For some reason (probably because re-assigning array everytime quickly destroys componentView elements, causing deallocs),
+        // sorting by updated_at (or any other property that may always be changing)
+        // causes weird problems with ext communication when changing notes or activating/deactivating in quick succession
+        return a.name.toLowerCase() < b.name.toLowerCase() ? -1 : 1;
+      });
+    }
+
     this.reloadComponentContext = function() {
       // componentStack is used by the template to ng-repeat
-      this.componentStack = componentManager.componentsForArea("editor-stack");
+      this.reloadComponentStackArray();
       /*
       In the past, we were doing this looping code even if the note wasn't currently defined.
       The problem is if an editor stack item loaded first, requested to stream items, and the note was undefined,
@@ -654,7 +746,7 @@ angular.module('app')
       if(this.note) {
         for(var component of this.componentStack) {
           if(component.active) {
-            component.hidden = component.isExplicitlyDisabledForItem(this.note);
+            componentManager.setComponentHidden(component, !component.isExplicitlyEnabledForItem(this.note));
           }
         }
       }
@@ -665,17 +757,19 @@ angular.module('app')
     }
 
     this.toggleStackComponentForCurrentItem = function(component) {
-      if(component.hidden) {
+      // If it's hidden, we want to show it
+      // If it's not active, then hidden won't be set, and we mean to activate and show it.
+      if(component.hidden || !component.active) {
         // Unhide, associate with current item
-        component.hidden = false;
+        componentManager.setComponentHidden(component, false);
+        this.associateComponentWithCurrentNote(component);
         if(!component.active) {
           componentManager.activateComponent(component);
         }
-        this.associateComponentWithCurrentNote(component);
         componentManager.contextItemDidChangeInArea("editor-stack");
       } else {
         // not hidden, hide
-        component.hidden = true;
+        componentManager.setComponentHidden(component, true);
         this.disassociateComponentWithCurrentNote(component);
       }
     }
@@ -688,6 +782,7 @@ angular.module('app')
       }
 
       component.setDirty(true);
+      syncManager.sync();
     }
 
     this.associateComponentWithCurrentNote = function(component) {
@@ -698,6 +793,7 @@ angular.module('app')
       }
 
       component.setDirty(true);
+      syncManager.sync();
     }
 
 
@@ -723,6 +819,9 @@ angular.module('app')
       var parent = this;
       var handleTab = function (event) {
         if (!event.shiftKey && event.which == 9) {
+          if(parent.note.locked) {
+            return;
+          }
           event.preventDefault();
 
           // Using document.execCommand gives us undo support

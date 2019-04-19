@@ -6,27 +6,18 @@
   -webkit-user-select: none;
 
   &, #tags-content {
-    background-color: #f6f6f6;
+    background-color: var(--sn-stylekit-secondary-background-color);
     display: flex;
     flex-direction: column;
   }
 
-  #tags-title-bar {
-    color: black;
-    padding-top: 14px;
-    padding-bottom: 16px;
+  .tags-title-section {
+    color: var(--sn-stylekit-secondary-foreground-color);
+    padding-top: 15px;
+    padding-bottom: 8px;
     padding-left: 12px;
     padding-right: 12px;
     font-size: 12px;
-    color: rgba(black, 0.8);
-  }
-
-  #tag-add-button {
-    background-color: #d7d7d7;
-
-    &:hover {
-      background-color: rgba(#d7d7d7, 0.8);
-    }
   }
 
   .scrollable {
@@ -37,12 +28,20 @@
     overflow-x: hidden;
     height: inherit;
 
-    // Autohide scrollbar on Windows. 
+    // Autohide scrollbar on Windows.
     // Unfortunately must affect every platform since no way to hide just for Windows.
     overflow-y: hidden;
     &:hover {
       overflow-y: scroll;
+      overflow-y: overlay; // overlay is not supported on ff, so keep previous statement up
     }
+  }
+
+  .no-tags-placeholder {
+    padding: 0px 12px;
+    font-size: 12px;
+    opacity: 0.4;
+    margin-top: -5px;
   }
 
   .tag {
@@ -51,9 +50,8 @@
     cursor: pointer;
     transition: height .1s ease-in-out;
     position: relative;
-    font-size: 14px;
 
-    > .info {
+    > .tag-info {
       height: 20px;
 
       > .title {
@@ -61,11 +59,19 @@
         background-color: transparent;
         font-weight: 600;
         float: left;
-        color: $main-text-color;
+        color: var(--sn-stylekit-secondary-foreground-color);
         border: none;
         cursor: pointer;
         text-overflow: ellipsis;
         width: 75%;
+
+        // Required for Safari to avoid highlighting when dragging panel resizers
+        // Make sure to undo if it's selected (for editing)
+        -webkit-user-select: none;
+
+        &.editing  {
+          -webkit-user-select: text !important;
+        }
 
         pointer-events: none;
       }
@@ -75,6 +81,7 @@
         right: 17px;
         padding-top: 1px;
         font-weight: bold;
+        color: var(--sn-stylekit-neutral-color);
       }
     }
 
@@ -96,32 +103,19 @@
       }
     }
 
-    $tags-selected-color: #dbdbdb;
-
     &.selected {
-      background-color: $tags-selected-color;
-      color: $selected-text-color;
-      > .title {
-        color: $selected-text-color;
-        cursor: text;
+      > .tag-info {
+        .title {
+          cursor: text;
+        }
       }
     }
 
-    /* When a note is dragged over tag */
-    &.over {
-      background-color: $tags-selected-color;
-      color: $selected-text-color;
-      border: 2px dashed white;
+    &:hover:not(.selected), &.selected  {
+      background-color: var(--sn-stylekit-secondary-contrast-background-color);
+      color: var(--sn-stylekit-secondary-contrast-foreground-color);
       > .title {
-        color: $selected-text-color;
-      }
-    }
-
-    &:hover:not(.selected) {
-      background-color: $tags-selected-color;
-      color: $selected-text-color;
-      > .title {
-        color: $selected-text-color;
+        color: var(--sn-stylekit-secondary-contrast-foreground-color);
       }
     }
   }

@@ -4,6 +4,11 @@ class SyncManager extends SFSyncManager {
     super(modelManager, storageManager, httpManager, $timeout, $interval);
     this.$rootScope = $rootScope;
     this.$compile = $compile;
+
+    // Content types appearing first are always mapped first
+    this.contentTypeLoadPriority = [
+      "SN|UserPreferences", "SN|Privileges",
+      "SN|Component", "SN|Theme"];
   }
 
   presentConflictResolutionModal(items, callback) {
@@ -11,7 +16,7 @@ class SyncManager extends SFSyncManager {
     scope.item1 = items[0];
     scope.item2 = items[1];
     scope.callback = callback;
-    var el = this.$compile( "<conflict-resolution-modal item1='item1' item2='item2' callback='callback' class='modal'></conflict-resolution-modal>" )(scope);
+    var el = this.$compile( "<conflict-resolution-modal item1='item1' item2='item2' callback='callback' class='sk-modal'></conflict-resolution-modal>" )(scope);
     angular.element(document.body).append(el);
   }
 

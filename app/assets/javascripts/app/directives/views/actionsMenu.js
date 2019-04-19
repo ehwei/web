@@ -11,7 +11,9 @@ class ActionsMenu {
   controller($scope, modelManager, actionsManager) {
     'ngInject';
 
-    $scope.extensions = actionsManager.extensions.sort((a, b) => {return a.name.toLowerCase() > b.name.toLowerCase()});
+    $scope.extensions = actionsManager.extensions.sort((a, b) => {
+      return a.name.toLowerCase() < b.name.toLowerCase() ? -1 : 1;
+    });
 
     for(let ext of $scope.extensions) {
       ext.loading = true;
@@ -37,10 +39,13 @@ class ActionsMenu {
         // reload extension actions
         actionsManager.loadExtensionInContextOfItem(extension, $scope.item, function(ext){
           // keep nested state
-          if(parentAction) {
-            var matchingAction = _.find(ext.actions, {label: parentAction.label});
-            matchingAction.subrows = $scope.subRowsForAction(parentAction, extension);
-          }
+          // 4/1/2019: We're not going to do this anymore because we're no longer using nested actions for version history,
+          // and also because finding the parentAction based on only label is not good enough. Two actions can have same label.
+          // We'd need a way to track actions after they are reloaded, but there's no good way to do this.
+          // if(parentAction) {
+          //   var matchingAction = _.find(ext.actions, {label: parentAction.label});
+          //   matchingAction.subrows = $scope.subRowsForAction(parentAction, extension);
+          // }
         });
       })
     }

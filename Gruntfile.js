@@ -5,7 +5,7 @@ module.exports = function(grunt) {
     watch: {
       haml: {
         files: ['app/assets/templates/**/*.haml'],
-        tasks: ['newer:haml', 'ngtemplates', 'concat:app', 'babel', 'browserify', 'concat:dist'],
+        tasks: ['newer:haml', 'ngtemplates', 'concat:app', 'babel', 'browserify', 'concat:dist', 'ngAnnotate'],
         options: {
           spawn: false,
         },
@@ -85,7 +85,8 @@ module.exports = function(grunt) {
          src: [
            'node_modules/standard-file-js/dist/regenerator.js',
            'node_modules/standard-file-js/dist/sfjs.js',
-           'vendor/assets/bower_components/angular/angular.js',
+           'node_modules/angular/angular.js',
+           'vendor/assets/javascripts/angular-sanitize.js',
            'vendor/assets/javascripts/lodash/lodash.custom.min.js'
          ],
          dest: 'dist/javascripts/lib.js',
@@ -165,6 +166,6 @@ module.exports = function(grunt) {
   grunt.registerTask('default', ['haml', 'ngtemplates', 'sass', 'concat:app', 'babel', 'browserify',
   'concat:lib', 'concat:dist', 'ngAnnotate', 'concat:css', 'uglify']);
 
-  grunt.registerTask('vendor', ['concat:app', 'babel', 'browserify',
+  grunt.registerTask('vendor', ['concat:app', 'sass', 'babel', 'browserify',
   'concat:lib', 'concat:dist', 'ngAnnotate', 'concat:css', 'uglify']);
 };

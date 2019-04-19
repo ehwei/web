@@ -15,8 +15,9 @@ class EditorMenu {
 
     $scope.formData = {};
 
-    $scope.editors = componentManager.componentsForArea("editor-editor").sort((a, b) => {return a.name.toLowerCase() > b.name.toLowerCase()});
-    $scope.stack = componentManager.componentsForArea("editor-stack").sort((a, b) => {return a.name.toLowerCase() > b.name.toLowerCase()});
+    $scope.editors = componentManager.componentsForArea("editor-editor").sort((a, b) => {
+      return a.name.toLowerCase() < b.name.toLowerCase() ? -1 : 1;
+    });
 
     $scope.isDesktop = isDesktopApplication();
 
@@ -24,7 +25,11 @@ class EditorMenu {
 
     $scope.selectComponent = function(component) {
       if(component) {
-        component.conflict_of = null; // clear conflict if applicable
+        if(component.content.conflict_of) {
+          component.content.conflict_of = null; // clear conflict if applicable
+          component.setDirty(true, true);
+          syncManager.sync();
+        }
       }
       $timeout(() => {
         $scope.callback()(component);
@@ -72,17 +77,10 @@ class EditorMenu {
 
       if(component == $scope.selectedEditor) {
         return true;
-      } else if(component.area == "editor-stack") {
-        return $scope.stackComponentEnabled(component);
       } else {
         return false;
       }
     }
-
-    $scope.stackComponentEnabled = function(component) {
-      return component.active && !component.isExplicitlyDisabledForItem($scope.currentItem);
-    }
-
   }
 
 }

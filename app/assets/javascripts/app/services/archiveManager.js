@@ -1,9 +1,10 @@
 class ArchiveManager {
 
-  constructor(passcodeManager, authManager, modelManager) {
+  constructor(passcodeManager, authManager, modelManager, privilegesManager) {
     this.passcodeManager = passcodeManager;
     this.authManager = authManager;
     this.modelManager = modelManager;
+    this.privilegesManager = privilegesManager;
   }
 
   /*
@@ -15,31 +16,51 @@ class ArchiveManager {
   }
 
   async downloadBackupOfItems(items, encrypted) {
-    // download in Standard File format
-    var keys, authParams;
-    if(encrypted) {
-      if(this.authManager.offline() && this.passcodeManager.hasPasscode()) {
-        keys = this.passcodeManager.keys();
-        authParams = this.passcodeManager.passcodeAuthParams();
-      } else {
-        keys = await this.authManager.keys();
-        authParams = await this.authManager.getAuthParams();
+    let run = async () => {
+      // download in Standard File format
+      var keys, authParams;
+      if(encrypted) {
+        if(this.authManager.offline() && this.passcodeManager.hasPasscode()) {
+          keys = this.passcodeManager.keys();
+          authParams = this.passcodeManager.passcodeAuthParams();
+        } else {
+          keys = await this.authManager.keys();
+          authParams = await this.authManager.getAuthParams();
+        }
       }
-    }
-    this.__itemsData(items, keys, authParams).then((data) => {
-      this.__downloadData(data, `SN Archive - ${new Date()}.txt`);
+      this.__itemsData(items, keys, authParams).then((data) => {
+        let modifier = encrypted ? "Encrypted" : "Decrypted";
+        this.__downloadData(data, `Standard Notes ${modifier} Backup - ${this.__formattedDate()}.txt`);
 
-      // download as zipped plain text files
-      if(!keys) {
-        var notes = this.modelManager.allItemsMatchingTypes(["Note"]);
-        this.__downloadZippedNotes(notes);
-      }
-    })
+        // download as zipped plain text files
+        if(!keys) {
+          this.__downloadZippedItems(items);
+        }
+      })
+    }
+
+    if(await this.privilegesManager.actionRequiresPrivilege(PrivilegesManager.ActionManageBackups)) {
+      this.privilegesManager.presentPrivilegesModal(PrivilegesManager.ActionManageBackups, () => {
+        run();
+      });
+    } else {
+      run();
+    }
   }
 
   /*
   Private
   */
+
+  __formattedDate() {
+    var string = `${new Date()}`;
+    // Match up to the first parenthesis, i.e do not include '(Central Standard Time)'
+    var matches = string.match(/^(.*?) \(/);
+    if(matches.length >= 2) {
+      return matches[1]
+    }
+    return string;
+  }
 
   async __itemsData(items, keys, authParams) {
     let data = await this.modelManager.getJSONDataForItems(items, keys, authParams);
@@ -64,24 +85,44 @@ class ArchiveManager {
     }
   }
 
-  __downloadZippedNotes(notes) {
+  __downloadZippedItems(items) {
     this.__loadZip(() => {
       zip.createWriter(new zip.BlobWriter("application/zip"), (zipWriter) => {
         var index = 0;
 
         let nextFile = () => {
-          var note = notes[index];
-          var blob = new Blob([note.text], {type: 'text/plain'});
+          var item = items[index];
+          var name, contents;
 
-          var title = note.safeTitle().replace(/\//g, "").replace(/\\+/g, "");
+          if(item.content_type == "Note") {
+            name = item.content.title;
+            contents = item.content.text;
+          } else {
+            name = item.content_type;
+            contents = JSON.stringify(item.content, null, 2);
+          }
 
-          zipWriter.add(`${title}-${note.uuid}.txt`, new zip.BlobReader(blob), () => {
+          if(!name) {
+            name = "";
+          }
+
+          var blob = new Blob([contents], {type: 'text/plain'});
+
+          var filePrefix = name.replace(/\//g, "").replace(/\\+/g, "");
+          var fileSuffix = `-${item.uuid.split("-")[0]}.txt`
+
+          // Standard max filename length is 255. Slice the note name down to allow filenameEnd
+          filePrefix = filePrefix.slice(0, (255 - fileSuffix.length));
+
+          let fileName = `${item.content_type}/${filePrefix}${fileSuffix}`
+
+          zipWriter.add(fileName, new zip.BlobReader(blob), () => {
             index++;
-            if(index < notes.length) {
+            if(index < items.length) {
               nextFile();
             } else {
               zipWriter.close((blob) => {
-                this.__downloadData(blob, `Notes Txt Archive - ${new Date()}.zip`)
+                this.__downloadData(blob, `Standard Notes Backup - ${this.__formattedDate()}.zip`);
                 zipWriter = null;
               });
             }

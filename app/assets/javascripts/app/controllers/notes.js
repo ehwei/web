@@ -16,33 +16,102 @@ angular.module('app')
       link:function(scope, elem, attrs, ctrl) {
         scope.$watch('ctrl.tag', (tag, oldTag) => {
           if(tag) {
-            if(tag.needsLoad) {
-              scope.$watch('ctrl.tag.didLoad', function(didLoad){
-                if(didLoad) {
-                  tag.needsLoad = false;
-                  ctrl.tagDidChange(tag, oldTag);
-                }
-              });
-            } else {
-              ctrl.tagDidChange(tag, oldTag);
-            }
+            ctrl.tagDidChange(tag, oldTag);
           }
         });
       }
     }
   })
-  .controller('NotesCtrl', function (authManager, $timeout, $rootScope, modelManager, storageManager, desktopManager) {
+  .controller('NotesCtrl', function (authManager, $timeout, $rootScope, modelManager,
+    syncManager, storageManager, desktopManager, privilegesManager) {
 
     this.panelController = {};
+    this.searchSubmitted = false;
 
     $rootScope.$on("user-preferences-changed", () => {
       this.loadPreferences();
     });
 
+    authManager.addEventHandler((event) => {
+      if(event == SFAuthManager.DidSignInEvent) {
+        // Delete dummy note if applicable
+        if(this.selectedNote && this.selectedNote.dummy) {
+          modelManager.removeItemLocally(this.selectedNote);
+          _.pull(this.notes, this.selectedNote);
+          this.selectedNote = null;
+        }
+      }
+    })
+
+    syncManager.addEventHandler((syncEvent, data) => {
+      if(syncEvent == "local-data-loaded") {
+        this.localDataLoaded = true;
+        this.needsHandleDataLoad = true;
+      }
+    });
+
+    modelManager.addItemSyncObserver("note-list", "*", (allItems, validItems, deletedItems, source, sourceKey) => {
+      // reload our notes
+      this.reloadNotes();
+
+      if(this.needsHandleDataLoad) {
+        this.needsHandleDataLoad = false;
+        if(this.tag && this.notes.length == 0) {
+          this.createNewNote();
+        }
+      }
+
+      // Note has changed values, reset its flags
+      let notes = allItems.filter((item) => item.content_type == "Note");
+      for(let note of notes) {
+        this.loadFlagsForNote(note);
+        note.cachedCreatedAtString = note.createdAtString();
+        note.cachedUpdatedAtString = note.updatedAtString();
+      }
+
+      // select first note if none is selected
+      if(!this.selectedNote) {
+        $timeout(() => {
+          // required to be in timeout since selecting notes depends on rendered notes
+          this.selectFirstNote();
+        })
+      }
+    });
+
+    this.setNotes = function(notes) {
+      notes = this.filterNotes(notes);
+      notes = this.sortNotes(notes, this.sortBy, this.sortReverse);
+      for(let note of notes) {
+        note.shouldShowTags = this.shouldShowTagsForNote(note);
+      }
+      this.notes = notes;
+
+      this.reloadPanelTitle();
+    }
+
+    this.reloadNotes = function() {
+      let notes = this.tag.notes;
+
+      // Typically we reload flags via modelManager.addItemSyncObserver,
+      // but sync observers are not notified of errored items, so we'll do it here instead
+      for(let note of notes) {
+        if(note.errorDecrypting) {
+          this.loadFlagsForNote(note);
+        }
+      }
+
+      this.setNotes(notes);
+    }
+
+    this.reorderNotes = function() {
+      this.setNotes(this.notes);
+    }
+
     this.loadPreferences = function() {
       let prevSortValue = this.sortBy;
 
       this.sortBy = authManager.getUserPrefValue("sortBy", "created_at");
+      this.sortReverse = authManager.getUserPrefValue("sortReverse", false);
 
       if(this.sortBy == "updated_at") {
         // use client_updated_at instead
@@ -54,7 +123,6 @@ angular.module('app')
           this.selectFirstNote();
         })
       }
-      this.sortDescending = this.sortBy != "title";
 
       this.showArchived = authManager.getUserPrefValue("showArchived", false);
       this.hidePinned = authManager.getUserPrefValue("hidePinned", false);
@@ -65,14 +133,18 @@ angular.module('app')
       let width = authManager.getUserPrefValue("notesPanelWidth");
       if(width) {
         this.panelController.setWidth(width);
+        if(this.panelController.isCollapsed()) {
+          $rootScope.$broadcast("panel-resized", {panel: "notes", collapsed: this.panelController.isCollapsed()})
+        }
       }
     }
 
     this.loadPreferences();
 
-    this.onPanelResize = function(newWidth) {
+    this.onPanelResize = function(newWidth, lastLeft, isAtMaxWidth, isCollapsed) {
       authManager.setUserPrefValue("notesPanelWidth", newWidth);
       authManager.syncUserPreferences();
+      $rootScope.$broadcast("panel-resized", {panel: "notes", collapsed: isCollapsed})
     }
 
     angular.element(document).ready(() => {
@@ -95,31 +167,49 @@ angular.module('app')
     // When a note is removed from the list
     this.onNoteRemoval = function() {
       let visibleNotes = this.visibleNotes();
+      let index;
       if(this.selectedIndex < visibleNotes.length) {
-        this.selectNote(visibleNotes[Math.max(this.selectedIndex, 0)]);
+        index = Math.max(this.selectedIndex, 0);
       } else {
-        this.selectNote(visibleNotes[visibleNotes.length - 1]);
+        index = visibleNotes.length - 1;
+      }
+
+      let note = visibleNotes[index];
+      if(note) {
+        this.selectNote(note);
+      } else {
+        this.createNewNote();
       }
     }
 
-    let MinNoteHeight = 51.0; // This is the height of a note cell with nothing but the title, which *is* a display option
-    this.DefaultNotesToDisplayValue = (document.documentElement.clientHeight / MinNoteHeight) || 20;
+    window.onresize = (event) =>   {
+      this.resetPagination({keepCurrentIfLarger: true});
+    };
 
     this.paginate = function() {
       this.notesToDisplay += this.DefaultNotesToDisplayValue
+
+      if (this.searchSubmitted) {
+        desktopManager.searchText(this.noteFilter.text);
+      }
     }
 
-    this.resetPagination = function() {
+    this.resetPagination = function({keepCurrentIfLarger} = {}) {
+      let MinNoteHeight = 51.0; // This is the height of a note cell with nothing but the title, which *is* a display option
+      this.DefaultNotesToDisplayValue = (document.documentElement.clientHeight / MinNoteHeight) || 20;
+      if(keepCurrentIfLarger && this.notesToDisplay > this.DefaultNotesToDisplayValue) {
+        return;
+      }
       this.notesToDisplay = this.DefaultNotesToDisplayValue;
     }
 
     this.resetPagination();
 
-    this.panelTitle = function() {
+    this.reloadPanelTitle = function() {
       if(this.isFiltering()) {
-        return `${this.tag.notes.filter((i) => {return i.visible;}).length} search results`;
+        this.panelTitle = `${this.notes.filter((i) => {return i.visible;}).length} search results`;
       } else if(this.tag) {
-        return `${this.tag.title} notes`;
+        this.panelTitle = `${this.tag.title}`;
       }
     }
 
@@ -133,23 +223,71 @@ angular.module('app')
         base += " Title";
       }
 
-      if(!this.tag || !this.tag.isSmartTag()) {
-        // These rules don't apply for smart tags
-        if(this.showArchived) {
-          base += " | + Archived"
-        }
-        if(this.hidePinned) {
-          base += " | – Pinned"
-        }
+      if(this.showArchived) {
+        base += " | + Archived"
+      }
+      if(this.hidePinned) {
+        base += " | – Pinned"
       }
 
       return base;
     }
 
-    this.toggleKey = function(key) {
-      this[key] = !this[key];
-      authManager.setUserPrefValue(key, this[key]);
-      authManager.syncUserPreferences();
+    this.loadFlagsForNote = (note) => {
+      let flags = [];
+
+      if(note.pinned) {
+        flags.push({
+          text: "Pinned",
+          class: "info"
+        })
+      }
+
+      if(note.archived) {
+        flags.push({
+          text: "Archived",
+          class: "warning"
+        })
+      }
+
+      if(note.content.protected) {
+        flags.push({
+          text: "Protected",
+          class: "success"
+        })
+      }
+
+      if(note.locked) {
+        flags.push({
+          text: "Locked",
+          class: "neutral"
+        })
+      }
+
+      if(note.content.trashed) {
+        flags.push({
+          text: "Deleted",
+          class: "danger"
+        })
+      }
+
+      if(note.content.conflict_of) {
+        flags.push({
+          text: "Conflicted Copy",
+          class: "danger"
+        })
+      }
+
+      if(note.errorDecrypting) {
+        flags.push({
+          text: "Missing Keys",
+          class: "danger"
+        })
+      }
+
+      note.flags = flags;
+
+      return flags;
     }
 
     this.tagDidChange = function(tag, oldTag) {
@@ -170,47 +308,76 @@ angular.module('app')
       }
 
       this.noteFilter.text = "";
+
       this.setNotes(tag.notes);
-    }
 
-    this.setNotes = function(notes) {
-      notes.forEach((note) => {
-        note.visible = true;
+      // perform in timeout since visibleNotes relies on renderedNotes which relies on render to complete
+      $timeout(() => {
+        if(this.notes.length > 0) {
+          this.notes.forEach((note) => { note.visible = true; })
+          this.selectFirstNote();
+        } else if(this.localDataLoaded) {
+          this.createNewNote();
+        }
       })
-
-      var createNew = this.visibleNotes().length == 0;
-      this.selectFirstNote(createNew);
     }
 
     this.visibleNotes = function() {
-      return this.sortedNotes.filter(function(note){
+      return this.renderedNotes.filter(function(note){
         return note.visible;
       });
     }
 
-    this.selectFirstNote = function(createNew) {
+    this.selectFirstNote = function() {
       var visibleNotes = this.visibleNotes();
-
       if(visibleNotes.length > 0) {
         this.selectNote(visibleNotes[0]);
-      } else if(createNew) {
-        this.createNewNote();
       }
     }
 
-    this.selectNote = function(note, viaClick = false) {
+    this.selectNote = async function(note, viaClick = false) {
       if(!note) {
-        this.createNewNote();
         return;
       }
 
-      this.selectedNote = note;
-      note.conflict_of = null; // clear conflict
-      this.selectionMade()(note);
-      this.selectedIndex = Math.max(this.visibleNotes().indexOf(note), 0);
+      let run = () => {
+        $timeout(() => {
+          let dummyNote;
+          if(this.selectedNote && this.selectedNote != note && this.selectedNote.dummy) {
+            // remove dummy
+            dummyNote = this.selectedNote;
+          }
 
-      if(viaClick && this.isFiltering()) {
-        desktopManager.searchText(this.noteFilter.text);
+          this.selectedNote = note;
+          if(note.content.conflict_of) {
+            note.content.conflict_of = null; // clear conflict
+            note.setDirty(true, true);
+            syncManager.sync();
+          }
+          this.selectionMade()(note);
+          this.selectedIndex = Math.max(this.visibleNotes().indexOf(note), 0);
+
+          // There needs to be a long timeout after setting selection before removing the dummy
+          // Otherwise, you'll click a note, remove this one, and strangely, the click event registers for a lower cell
+          if(dummyNote) {
+            $timeout(() => {
+              modelManager.removeItemLocally(dummyNote);
+              _.pull(this.notes, dummyNote);
+            }, 250)
+          }
+
+          if(viaClick && this.isFiltering()) {
+            desktopManager.searchText(this.noteFilter.text);
+          }
+        })
+      }
+
+      if(note.content.protected && await privilegesManager.actionRequiresPrivilege(PrivilegesManager.ActionViewProtectedNotes)) {
+        privilegesManager.presentPrivilegesModal(PrivilegesManager.ActionViewProtectedNotes, () => {
+          run();
+        });
+      } else {
+        run();
       }
     }
 
@@ -221,7 +388,7 @@ angular.module('app')
     this.createNewNote = function(title = "") {
       // The "Note X" counter is based off this.tag.notes.length, but sometimes, what you see in the list is only a subset.
       // We can use this.visibleNotes().length, but that only accounts for non-paginated results, so first 15 or so.
-      if (title == "") {title = "Note" + (this.tag.notes ? (" " + (this.tag.notes.length + 1)) : "") };
+      if (title == "") {title = "Note" + (this.notes ? (" " + (this.notes.length + 1)) : "");}
       let newNote = modelManager.createItem({content_type: "Note", content: {text: "", title: title}});
       newNote.dummy = true;
       this.newNote = newNote;
@@ -231,37 +398,11 @@ angular.module('app')
 
     this.noteFilter = {text : ''};
 
-    this.filterNotes = function(note) {
-      var canShowArchived = false, canShowPinned = true;
-      var isSmartTag = this.tag.isSmartTag();
-      if(isSmartTag) {
-        canShowArchived = this.tag.isReferencingArchivedNotes();
-      } else {
-        canShowArchived = this.showArchived;
-        canShowPinned = !this.hidePinned;
-      }
-
-      if((note.archived && !canShowArchived) || (note.pinned && !canShowPinned)) {
-        note.visible = false;
-        return note.visible;
-      }
-
-      var filterText = this.noteFilter.text.toLowerCase();
-      if(filterText.length == 0) {
-        note.visible = true;
-      } else {
-        var words = filterText.split(" ");
-        var matchesTitle = words.every(function(word) { return  note.safeTitle().toLowerCase().indexOf(word) >= 0; });
-        var matchesBody = words.every(function(word) { return  note.safeText().toLowerCase().indexOf(word) >= 0; });
-        note.visible = matchesTitle || matchesBody;
-      }
-
-      return note.visible;
-    }.bind(this)
 
     this.onFilterEnter = function() {
       // For Desktop, performing a search right away causes input to lose focus.
       // We wait until user explicity hits enter before highlighting desktop search results.
+      this.searchSubmitted = true;
       desktopManager.searchText(this.noteFilter.text);
     }
 
@@ -284,49 +425,154 @@ angular.module('app')
     }
 
     this.filterTextChanged = function() {
-      $timeout(function(){
+      if(this.searchSubmitted) {
+        this.searchSubmitted = false;
+      }
+
+      this.reloadNotes();
+
+      $timeout(() => {
         if(!this.selectedNote.visible) {
-          this.selectFirstNote(false);
+          this.selectFirstNote();
         }
-      }.bind(this), 100)
+      }, 100)
     }
 
     this.selectedMenuItem = function() {
       this.showMenu = false;
     }
 
+    this.togglePrefKey = function(key) {
+      this[key] = !this[key];
+      authManager.setUserPrefValue(key, this[key]);
+      authManager.syncUserPreferences();
+      this.reloadNotes();
+    }
+
     this.selectedSortByCreated = function() {
       this.setSortBy("created_at");
-      this.sortDescending = true;
     }
 
     this.selectedSortByUpdated = function() {
       this.setSortBy("client_updated_at");
-      this.sortDescending = true;
     }
 
     this.selectedSortByTitle = function() {
       this.setSortBy("title");
-      this.sortDescending = false;
+    }
+
+    this.toggleReverseSort = function() {
+      this.selectedMenuItem();
+      this.sortReverse = !this.sortReverse;
+      this.reorderNotes();
+      authManager.setUserPrefValue("sortReverse", this.sortReverse);
+      authManager.syncUserPreferences();
     }
 
     this.setSortBy = function(type) {
       this.sortBy = type;
+      this.reorderNotes();
       authManager.setUserPrefValue("sortBy", this.sortBy);
       authManager.syncUserPreferences();
     }
 
-    this.shouldShowTags = function(note) {
-      if(this.hideTags) {
+    this.shouldShowTagsForNote = function(note) {
+      if(this.hideTags || note.content.protected) {
         return false;
       }
 
-      if(this.tag.all) {
+      if(this.tag.content.isAllTag) {
+        return note.tags && note.tags.length > 0;
+      }
+
+      if(this.tag.isSmartTag()) {
         return true;
       }
 
       // Inside a tag, only show tags string if note contains tags other than this.tag
       return note.tags && note.tags.length > 1;
     }
+
+    this.filterNotes = function(notes) {
+      return notes.filter((note) => {
+        let canShowArchived = this.showArchived, canShowPinned = !this.hidePinned;
+        let isTrash = this.tag.content.isTrashTag;
+
+        if(!isTrash && note.content.trashed) {
+          note.visible = false;
+          return note.visible;
+        }
+
+        var isSmartTag = this.tag.isSmartTag();
+        if(isSmartTag) {
+          canShowArchived = canShowArchived || this.tag.content.isArchiveTag || isTrash;
+        }
+
+        if((note.archived && !canShowArchived) || (note.pinned && !canShowPinned)) {
+          note.visible = false;
+          return note.visible;
+        }
+
+        var filterText = this.noteFilter.text.toLowerCase();
+        if(filterText.length == 0) {
+          note.visible = true;
+        } else {
+          var words = filterText.split(" ");
+          var matchesTitle = words.every(function(word) { return  note.safeTitle().toLowerCase().indexOf(word) >= 0; });
+          var matchesBody = words.every(function(word) { return  note.safeText().toLowerCase().indexOf(word) >= 0; });
+          note.visible = matchesTitle || matchesBody;
+        }
+
+        return note.visible;
+      });
+    }
+
+    this.sortNotes = function(items, sortBy, reverse) {
+      let sortValueFn = (a, b, pinCheck = false) => {
+        if(a.dummy) { return -1; }
+        if(b.dummy) { return 1; }
+        if(!pinCheck) {
+          if(a.pinned && b.pinned) {
+            return sortValueFn(a, b, true);
+          }
+          if(a.pinned) { return -1; }
+          if(b.pinned) { return 1; }
+        }
+
+        var aValue = a[sortBy] || "";
+        var bValue = b[sortBy] || "";
+
+        let vector = 1;
+
+        if(reverse) {
+          vector *= -1;
+        }
+
+        if(sortBy == "title") {
+          aValue = aValue.toLowerCase();
+          bValue = bValue.toLowerCase();
+
+          if(aValue.length == 0 && bValue.length == 0) {
+            return 0;
+          } else if(aValue.length == 0 && bValue.length != 0) {
+            return 1 * vector;
+          } else if(aValue.length != 0 && bValue.length == 0) {
+            return -1 * vector;
+          } else  {
+            vector *= -1;
+          }
+        }
+
+        if(aValue > bValue) { return -1 * vector;}
+        else if(aValue < bValue) { return 1 * vector;}
+        return 0;
+      }
+
+      items = items || [];
+      var result = items.sort(function(a, b){
+        return sortValueFn(a, b);
+      })
+      return result;
+    };
 
   });

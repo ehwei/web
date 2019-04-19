@@ -7,8 +7,6 @@ angular.module('app')
         selectionMade: "&",
         save: "&",
         tags: "=",
-        allTag: "=",
-        archiveTag: "=",
         updateNoteTag: "&",
         removeTag: "&"
       },
@@ -17,25 +15,43 @@ angular.module('app')
       controller: 'TagsCtrl',
       controllerAs: 'ctrl',
       bindToController: true,
-
-      link:function(scope, elem, attrs, ctrl) {
-        scope.$watch('ctrl.tags', function(newTags){
-          if(newTags) {
-            ctrl.setTags(newTags);
-          }
-        });
-
-        scope.$watch('ctrl.allTag', function(allTag){
-          if(allTag) {
-            ctrl.setAllTag(allTag);
-          }
-        });
-      }
     }
   })
-  .controller('TagsCtrl', function ($rootScope, modelManager, $timeout, componentManager, authManager) {
+  .controller('TagsCtrl', function ($rootScope, modelManager, syncManager, $timeout, componentManager, authManager) {
+    // Wrap in timeout so that selectTag is defined
+    $timeout(() => {
+      this.smartTags = modelManager.getSmartTags();
+      this.selectTag(this.smartTags[0]);
+    })
 
-    var initialLoad = true;
+    syncManager.addEventHandler((syncEvent, data) => {
+      if(syncEvent == "local-data-loaded"
+        || syncEvent == "sync:completed"
+        || syncEvent == "local-data-incremental-load") {
+        this.tags = modelManager.tags;
+        this.smartTags = modelManager.getSmartTags();
+      }
+    });
+
+    modelManager.addItemSyncObserver("note-list", "*", (allItems, validItems, deletedItems, source, sourceKey) => {
+      // recompute note counts
+      let tags = [];
+      if(this.tags) {
+        tags = tags.concat(this.tags);
+      }
+      if(this.smartTags) {
+        tags = tags.concat(this.smartTags);
+      }
+
+      for(let tag of tags) {
+        var validNotes = SNNote.filterDummyNotes(tag.notes).filter(function(note){
+          return !note.archived && !note.content.trashed;
+        });
+
+        tag.cachedNoteCount = validNotes.length;
+      }
+    });
+
 
     this.panelController = {};
 
@@ -47,13 +63,17 @@ angular.module('app')
       let width = authManager.getUserPrefValue("tagsPanelWidth");
       if(width) {
         this.panelController.setWidth(width);
+        if(this.panelController.isCollapsed()) {
+          $rootScope.$broadcast("panel-resized", {panel: "tags", collapsed: this.panelController.isCollapsed()})
+        }
       }
     }
 
     this.loadPreferences();
 
-    this.onPanelResize = function(newWidth) {
+    this.onPanelResize = function(newWidth, lastLeft, isAtMaxWidth, isCollapsed) {
       authManager.setUserPrefValue("tagsPanelWidth", newWidth, true);
+      $rootScope.$broadcast("panel-resized", {panel: "tags", collapsed: isCollapsed})
     }
 
     this.componentManager = componentManager;
@@ -65,42 +85,33 @@ angular.module('app')
     }.bind(this), actionHandler: function(component, action, data){
       if(action === "select-item") {
         if(data.item.content_type == "Tag") {
-          var tag = modelManager.findItem(data.item.uuid);
+          let tag = modelManager.findItem(data.item.uuid);
           if(tag) {
             this.selectTag(tag);
           }
         } else if(data.item.content_type == "SN|SmartTag") {
-          var tag = new SNSmartTag(data.item);
-          Object.defineProperty(tag, "notes", {
-             get: () => {
-               return modelManager.notesMatchingPredicate(tag.content.predicate);
-             }
-          });
-          this.selectTag(tag);
+          let smartTag = new SNSmartTag(data.item);
+          this.selectTag(smartTag);
         }
       } else if(action === "clear-selection") {
-        this.selectTag(this.allTag);
+        this.selectTag(this.smartTags[0]);
       }
     }.bind(this)});
 
-    this.setAllTag = function(allTag) {
-      this.selectTag(this.allTag);
-    }
-
-    this.setTags = function(tags) {
-      if(initialLoad) {
-        initialLoad = false;
-        this.selectTag(this.allTag);
-      } else {
-        if(tags && tags.length > 0) {
-          this.selectTag(tags[0]);
-        }
-      }
-    }
-
     this.selectTag = function(tag) {
+      if(tag.isSmartTag()) {
+        Object.defineProperty(tag, "notes", {
+          get: () => {
+            return modelManager.notesMatchingSmartTag(tag);
+          }
+        });
+      }
       this.selectedTag = tag;
-      tag.conflict_of = null; // clear conflict
+      if(tag.content.conflict_of) {
+        tag.content.conflict_of = null; // clear conflict
+        tag.setDirty(true, true);
+        syncManager.sync();
+      }
       this.selectionMade()(tag);
     }
 
@@ -157,14 +168,6 @@ angular.module('app')
 
     this.selectedDeleteTag = function(tag) {
       this.removeTag()(tag);
-      this.selectTag(this.allTag);
+      this.selectTag(this.smartTags[0]);
     }
-
-    this.noteCount = function(tag) {
-      var validNotes = SNNote.filterDummyNotes(tag.notes).filter(function(note){
-        return !note.archived;
-      });
-      return validNotes.length;
-    }
-
   });

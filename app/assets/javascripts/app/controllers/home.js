@@ -1,28 +1,31 @@
 angular.module('app')
 .controller('HomeCtrl', function ($scope, $location, $rootScope, $timeout, modelManager,
-  dbManager, syncManager, authManager, themeManager, passcodeManager, storageManager, migrationManager) {
+  dbManager, syncManager, authManager, themeManager, passcodeManager, storageManager, migrationManager,
+  privilegesManager, statusManager) {
+
+    // Lock syncing until local data is loaded. Syncing may be called from a variety of places,
+    // such as when the window focuses, for example. We don't want sync to occur until all local items are loaded,
+    // otherwise, if sync happens first, then load, the load may override synced values.
+    syncManager.lockSyncing();
 
     storageManager.initialize(passcodeManager.hasPasscode(), authManager.isEphemeralSession());
 
-    try {
-      $scope.platform = function() {
-        var platform = navigator.platform.toLowerCase();
-        var trimmed = "";
-        if(platform.indexOf("mac") !== -1) {
-          trimmed = "mac";
-        } else if(platform.indexOf("win") !== -1) {
-          trimmed = "windows";
-        } if(platform.indexOf("linux") !== -1) {
-          trimmed = "linux";
-        }
-
-        return trimmed + (isDesktopApplication() ? "-desktop" : "-web");
-      }();
-    } catch (e) {}
+    $scope.platform = getPlatformString();
 
     $scope.onUpdateAvailable = function(version) {
       $rootScope.$broadcast('new-update-available', version);
     }
+
+    $rootScope.$on("panel-resized", (event, info) => {
+      if(info.panel == "notes") { this.notesCollapsed = info.collapsed; }
+      if(info.panel == "tags") { this.tagsCollapsed = info.collapsed; }
+
+      let appClass = "";
+      if(this.notesCollapsed) { appClass += "collapsed-notes"; }
+      if(this.tagsCollapsed) { appClass += " collapsed-tags"; }
+
+      $scope.appClass = appClass;
+    })
 
     /* Used to avoid circular dependencies where syncManager cannot be imported but rootScope can */
     $rootScope.sync = function(source) {
@@ -34,6 +37,94 @@ angular.module('app')
       window.location.reload();
     }
 
+    const initiateSync = () => {
+      authManager.loadInitialData();
+
+      this.syncStatusObserver = syncManager.registerSyncStatusObserver((status) => {
+        if(status.retrievedCount > 20) {
+          var text = `Downloading ${status.retrievedCount} items. Keep app open.`
+          this.syncStatus = statusManager.replaceStatusWithString(this.syncStatus, text);
+          this.showingDownloadStatus = true;
+        } else if(this.showingDownloadStatus) {
+          this.showingDownloadStatus = false;
+          var text = "Download Complete.";
+          this.syncStatus = statusManager.replaceStatusWithString(this.syncStatus, text);
+          setTimeout(() => {
+            this.syncStatus = statusManager.removeStatus(this.syncStatus);
+          }, 2000);
+        } else if(status.total > 20) {
+          this.uploadSyncStatus = statusManager.replaceStatusWithString(this.uploadSyncStatus, `Syncing ${status.current}/${status.total} items...`)
+        } else if(this.uploadSyncStatus) {
+          this.uploadSyncStatus = statusManager.removeStatus(this.uploadSyncStatus);
+        }
+      })
+
+      syncManager.setKeyRequestHandler(async () => {
+        let offline = authManager.offline();
+        let auth_params = offline ? passcodeManager.passcodeAuthParams() : await authManager.getAuthParams();
+        let keys = offline ? passcodeManager.keys() : await authManager.keys();
+        return {
+          keys: keys,
+          offline: offline,
+          auth_params: auth_params
+        }
+      });
+
+      let lastSessionInvalidAlert;
+
+      syncManager.addEventHandler((syncEvent, data) => {
+        $rootScope.$broadcast(syncEvent, data || {});
+        if(syncEvent == "sync-session-invalid") {
+          // On Windows, some users experience issues where this message keeps appearing. It might be that on focus, the app syncs, and this message triggers again.
+          // We'll only show it once every X seconds
+          let showInterval = 30; // At most 30 seconds in between
+          if(!lastSessionInvalidAlert || (new Date() - lastSessionInvalidAlert)/1000 > showInterval) {
+            lastSessionInvalidAlert = new Date();
+            setTimeout(function () {
+              // If this alert is displayed on launch, it may sometimes dismiss automatically really quicky for some reason. So we wrap in timeout
+              alert("Your session has expired. New changes will not be pulled in. Please sign out and sign back in to refresh your session.");
+            }, 500);
+          }
+        } else if(syncEvent == "sync-exception") {
+          alert(`There was an error while trying to save your items. Please contact support and share this message: ${data}`);
+        }
+      });
+
+      let encryptionEnabled = authManager.user || passcodeManager.hasPasscode();
+      this.syncStatus = statusManager.addStatusFromString(encryptionEnabled ? "Decrypting items..." : "Loading items...");
+
+      let incrementalCallback = (current, total) => {
+        let notesString = `${current}/${total} items...`
+        this.syncStatus = statusManager.replaceStatusWithString(this.syncStatus, encryptionEnabled ? `Decrypting ${notesString}` : `Loading ${notesString}`);
+      }
+
+      syncManager.loadLocalItems(incrementalCallback).then(() => {
+
+        // First unlock after initially locked to wait for local data loaded.
+        syncManager.unlockSyncing();
+
+        $timeout(() => {
+          $rootScope.$broadcast("initial-data-loaded"); // This needs to be processed first before sync is called so that singletonManager observers function properly.
+          // Perform integrity check on first sync
+          this.syncStatus = statusManager.replaceStatusWithString(this.syncStatus, "Syncing...");
+          syncManager.sync({performIntegrityCheck: true}).then(() => {
+            this.syncStatus = statusManager.removeStatus(this.syncStatus);
+          })
+          // refresh every 30s
+          setInterval(function () {
+            syncManager.sync();
+          }, 30000);
+        })
+      });
+
+      authManager.addEventHandler((event) => {
+        if(event == SFAuthManager.DidSignOutEvent) {
+          modelManager.handleSignout();
+          syncManager.handleSignout();
+        }
+      })
+    }
+
     function load() {
       // pass keys to storageManager to decrypt storage
       // Update: Wait, why? passcodeManager already handles this.
@@ -42,10 +133,6 @@ angular.module('app')
       openDatabase();
       // Retrieve local data and begin sycing timer
       initiateSync();
-      // Configure "All" psuedo-tag
-      loadAllTag();
-      // Configure "Archived" psuedo-tag
-      loadArchivedTag();
     }
 
     if(passcodeManager.isLocked()) {
@@ -68,70 +155,6 @@ angular.module('app')
         syncManager.clearSyncToken();
         syncManager.sync();
       })
-    }
-
-    function initiateSync() {
-      authManager.loadInitialData();
-
-      syncManager.setKeyRequestHandler(async () => {
-        let offline = authManager.offline();
-        let auth_params = offline ? passcodeManager.passcodeAuthParams() : await authManager.getAuthParams();
-        let keys = offline ? passcodeManager.keys() : await authManager.keys();
-        return {
-          keys: keys,
-          offline: offline,
-          auth_params: auth_params
-        }
-      });
-
-      syncManager.addEventHandler((syncEvent, data) => {
-        $rootScope.$broadcast(syncEvent, data || {});
-
-        if(syncEvent == "sync-session-invalid") {
-          alert("Your session has expired. New changes will not be pulled in. Please sign out and sign back in to refresh your session.");
-        } else if(syncEvent == "sync-exception") {
-          alert(`There was an error while trying to save your items. Please contact support and share this message: ${data}`);
-        }
-      });
-
-      syncManager.loadLocalItems().then(() => {
-        $timeout(() => {
-          $scope.allTag.didLoad = true;
-          $rootScope.$broadcast("initial-data-loaded");
-        })
-
-        syncManager.sync();
-        // refresh every 30s
-        setInterval(function () {
-          syncManager.sync();
-        }, 30000);
-      });
-
-      authManager.addEventHandler((event) => {
-        if(event == SFAuthManager.DidSignOutEvent) {
-          modelManager.handleSignout();
-          syncManager.handleSignout();
-        }
-      })
-    }
-
-    function loadAllTag() {
-      var allTag = new SNTag({content: {title: "All"}});
-      allTag.all = true;
-      allTag.needsLoad = true;
-      $scope.allTag = allTag;
-      $scope.tags = modelManager.tags;
-      $scope.allTag.notes = modelManager.notes;
-    }
-
-    function loadArchivedTag() {
-      var archiveTag = new SNSmartTag({content: {title: "Archived", predicate: ["archived", "=", true]}});
-      Object.defineProperty(archiveTag, "notes", {
-         get: () => {
-           return modelManager.notesMatchingPredicate(archiveTag.content.predicate);
-         }
-      });
-      $scope.archiveTag = archiveTag;
     }
 
     /*
@@ -210,7 +233,7 @@ angular.module('app')
         modelManager.setItemToBeDeleted(tag);
         syncManager.sync().then(() => {
           // force scope tags to update on sub directives
-          $scope.safeApply();
+          $rootScope.safeApply();
         });
       }
     }
@@ -222,7 +245,7 @@ angular.module('app')
     $scope.notesAddNew = function(note) {
       modelManager.addItem(note);
 
-      if(!$scope.selectedTag.all && !$scope.selectedTag.isSmartTag()) {
+      if(!$scope.selectedTag.isSmartTag()) {
         $scope.selectedTag.addItemAsRelationship(note);
         $scope.selectedTag.setDirty(true);
       }
@@ -232,7 +255,7 @@ angular.module('app')
     Shared Callbacks
     */
 
-    $scope.safeApply = function(fn) {
+    $rootScope.safeApply = function(fn) {
       var phase = this.$root.$$phase;
       if(phase == '$apply' || phase == '$digest')
         this.$eval(fn);
@@ -264,7 +287,7 @@ angular.module('app')
           // when deleting items while ofline, we need to explictly tell angular to refresh UI
           setTimeout(function () {
             $rootScope.notifyDelete();
-            $scope.safeApply();
+            $rootScope.safeApply();
           }, 50);
         } else {
           $timeout(() => {
@@ -274,9 +297,24 @@ angular.module('app')
       });
     }
 
+    /*
+      Disable dragging and dropping of files into main SN interface.
+      both 'dragover' and 'drop' are required to prevent dropping of files.
+      This will not prevent extensions from receiving drop events.
+    */
+    window.addEventListener('dragover', (event) => {
+      event.preventDefault();
+    }, false)
+
+    window.addEventListener('drop', (event) => {
+      event.preventDefault();
+      alert("Please use FileSafe to attach images and files. Learn more at standardnotes.org/filesafe.")
+    }, false)
 
 
-    // Handle Auto Sign In From URL
+    /*
+      Handle Auto Sign In From URL
+    */
 
     function urlParam(key) {
       return $location.search()[key];
