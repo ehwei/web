@@ -1,0 +1,13 @@
+/* HAX */
+#notes_column, .notes {
+    .note {
+      padding: 2px !important;
+      .name {
+        font-size:13px;
+      }
+      .note-preview {
+        font-size: 12px !important;
+        opacity:0.7;
+      }
+    }
+}
