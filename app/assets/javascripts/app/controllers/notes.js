@@ -186,8 +186,9 @@ angular.module('app')
       this.resetPagination({keepCurrentIfLarger: true});
     };
 
-    this.paginate = function() {
-      this.notesToDisplay += this.DefaultNotesToDisplayValue
+    /* For speed we load only one column-full initially; but then, in order to make the scrollbar behave the way the user expects, if they scroll at all, we load EVERYTHING. */
+    this.paginate = function() { 
+      this.notesToDisplay += 2000; //this.DefaultNotesToDisplayValue
 
       if (this.searchSubmitted) {
         desktopManager.searchText(this.noteFilter.text);
