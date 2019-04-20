@@ -197,7 +197,7 @@ angular.module('app')
 
     this.resetPagination = function({keepCurrentIfLarger} = {}) {
       let MinNoteHeight = 51.0; // This is the height of a note cell with nothing but the title, which *is* a display option
-      this.DefaultNotesToDisplayValue = (document.documentElement.clientHeight / MinNoteHeight) || 20;
+      this.DefaultNotesToDisplayValue = (document.documentElement.clientHeight / MinNoteHeight) || 100;
       if(keepCurrentIfLarger && this.notesToDisplay > this.DefaultNotesToDisplayValue) {
         return;
       }
@@ -408,7 +408,7 @@ angular.module('app')
       document.getElementById("note-text-editor").focus();
     }
 
-    /* UI sugar stolen from Notational Velocity: if the user presses enter in the search box
+    /* UI sugar stolen from Notational Velocity: if the user presses enter in the search box,
     and there are no search results, create a note with the search as the title */
     this.onCreateFromSearch = function() {
       if ( this.tag.notes.filter((i) => {return i.visible;}).length == 0) {
