@@ -188,16 +188,14 @@ angular.module('app')
 
     /* For speed we load only one column-full initially; but then, in order to make the scrollbar behave the way the user expects, if they scroll at all, we load EVERYTHING. */
     this.paginate = function() { 
-      this.notesToDisplay += 2000; //this.DefaultNotesToDisplayValue
-
+      this.notesToDisplay += 2000; 
       if (this.searchSubmitted) {
         desktopManager.searchText(this.noteFilter.text);
       }
     }
 
     this.resetPagination = function({keepCurrentIfLarger} = {}) {
-      let MinNoteHeight = 51.0; // This is the height of a note cell with nothing but the title, which *is* a display option
-      this.DefaultNotesToDisplayValue = (document.documentElement.clientHeight / MinNoteHeight) || 100;
+      this.DefaultNotesToDisplayValue = 100;
       if(keepCurrentIfLarger && this.notesToDisplay > this.DefaultNotesToDisplayValue) {
         return;
       }
