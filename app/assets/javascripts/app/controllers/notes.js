@@ -409,7 +409,8 @@ angular.module('app')
     }
 
     /* UI sugar stolen from Notational Velocity: if the user presses enter in the search box,
-    and there are no search results, create a note with the search as the title */
+    and there are no search results, create a note with the search as the title. Else we'll
+    "perform" the search (we actually do that live, but this adds the yellow highlighting) */
     this.onCreateFromSearch = function() {
       if ( this.tag.notes.filter((i) => {return i.visible;}).length == 0) {
         this.createNewNote(this.noteFilter.text);
