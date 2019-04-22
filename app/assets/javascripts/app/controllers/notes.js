@@ -431,8 +431,11 @@ angular.module('app')
         this.nudgeNoteSelection(-1);
       } else if (e.keyCode == 40) { //down arrow
         this.nudgeNoteSelection(1)
-      } else if (e.keyCode == 46 || e.keyCode == 8) { //delete or backspace
+      } else if (e.keyCode == 46 || e.keyCode == 8 || (e.keyCode == 68 && e.ctrlKey)) { //delete, backspace, Ctrl-D --> delete
         $rootScope.$emit("deleteNote");
+      } else if (e.keyCode == 65 && e.ctrlKey) { //Ctrl-A --> archive
+        $rootScope.$emit("archiveNote");
+        setTimeout(() => {this.nudgeNoteSelection(0)},25); //allow time for redraw
       }
     }
 
@@ -446,11 +449,37 @@ angular.module('app')
       }
       if(visibleNotes.length > 0) {
         this.selectNote(visibleNotes[i]);
-        //allow time to redraw before scrolling; .selected doesn't update synchronously
-        setTimeout(() => {
-          document.querySelector("div.scrollable .selected .name").scrollIntoViewIfNeeded({block:"start"});
-        },100);
+        if (dir != 0) {
+          setTimeout(()=>{this._scrollIntoViewIfNeeded("div.scrollable .selected .name",dir == 1)},15);
+        }
       }
+    }
+
+    //https://codepen.io/bfintal/pen/Ejvgrp
+    this._isElementInView = function(el) {
+      const scroll = window.scrollY || window.pageYOffset
+      const boundsTop = el.getBoundingClientRect().top + scroll
+      const fudge = 100;
+
+      const viewport = {
+        top: scroll + fudge,
+        bottom: scroll + window.innerHeight - fudge,
+      }
+      
+        const bounds = {
+        top: boundsTop,
+        bottom: boundsTop + el.clientHeight,
+      }
+      
+      var ret= ( bounds.bottom >= viewport.top && bounds.bottom <= viewport.bottom ) 
+        || ( bounds.top <= viewport.bottom && bounds.top >= viewport.top );
+      return ret;
+    }
+
+    this._scrollIntoViewIfNeeded = function(descriptor, at_bottom) {
+      var el = document.querySelector(descriptor);
+      if (!el || this._isElementInView(el)) {return}
+      el.scrollIntoView(at_bottom);
     }
 
     this.clearFilterText = function() {

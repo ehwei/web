@@ -121,6 +121,11 @@ angular.module('app')
       this.deleteNote();
     }.bind(this));
 
+    $rootScope.$on('archiveNote', function(){
+      this.toggleArchiveNote();
+    }.bind(this));
+
+
     this.setNote = function(note, oldNote) {
       this.showExtensions = false;
       this.showMenu = false;
