@@ -22,7 +22,9 @@
 
         %form.sk-panel-form{"ng-submit" => "submitAuthForm()"}
           .sk-panel-section
-            %input.sk-input.contrast{:placeholder => 'Email', "sn-autofocus" => 'true', "should-focus" => "true", :name => 'email', :required => true, :type => 'email', 'ng-model' => 'formData.email', 'spellcheck' => 'false'}
+            %input.sk-input.contrast{:placeholder => 'Email', "sn-autofocus" => 'true',
+              "should-focus" => "true", :name => 'email', :required => true, :type => 'email',
+              'ng-model' => 'formData.email', 'spellcheck' => 'false', "ng-model-options"=> "{allowInvalid: true}"}
             %input.sk-input.contrast{:placeholder => 'Password', :name => 'password', :required => true, :type => 'password', 'ng-model' => 'formData.user_password', 'sn-enter' => 'submitAuthForm()'}
             %input.sk-input.contrast{:placeholder => 'Confirm Password', "ng-if" => "formData.showRegister", :name => 'password', :required => true, :type => 'password', 'ng-model' => 'formData.password_conf', 'sn-enter' => 'submitAuthForm()'}
             .sk-panel-row
@@ -194,7 +196,9 @@
           .sk-panel-row
             .sk-spinner.small.info{"ng-if" => "importData.loading"}
     .sk-panel-footer
-      %a.sk-a.right{"ng-if" => "formData.showLogin || formData.showRegister", "ng-click" => "formData.showLogin = false; formData.showRegister = false;"}
-        Cancel
-      %a.sk-a.right.danger{"ng-if" => "!formData.showLogin && !formData.showRegister", "ng-click" => "destroyLocalData()"}
-        {{ user ? "Sign out and clear local data" : "Clear all local data" }}
+      .sk-panel-row
+        .sk-p.left.neutral.faded {{appVersion}}
+        %a.sk-a.right{"ng-if" => "formData.showLogin || formData.showRegister", "ng-click" => "formData.showLogin = false; formData.showRegister = false;"}
+          Cancel
+        %a.sk-a.right.danger{"ng-if" => "!formData.showLogin && !formData.showRegister", "ng-click" => "destroyLocalData()"}
+          {{ user ? "Sign out and clear local data" : "Clear all local data" }}

@@ -6,8 +6,6 @@ angular.module('app')
         addNew: "&",
         selectionMade: "&",
         save: "&",
-        tags: "=",
-        updateNoteTag: "&",
         removeTag: "&"
       },
       templateUrl: 'tags.html',
@@ -33,25 +31,23 @@ angular.module('app')
       }
     });
 
-    modelManager.addItemSyncObserver("note-list", "*", (allItems, validItems, deletedItems, source, sourceKey) => {
-      // recompute note counts
-      let tags = [];
-      if(this.tags) {
-        tags = tags.concat(this.tags);
-      }
-      if(this.smartTags) {
-        tags = tags.concat(this.smartTags);
-      }
+    modelManager.addItemSyncObserver("tags-list", "*", (allItems, validItems, deletedItems, source, sourceKey) => {
+      this.reloadNoteCounts();
+    });
 
-      for(let tag of tags) {
-        var validNotes = SNNote.filterDummyNotes(tag.notes).filter(function(note){
+    this.reloadNoteCounts = function() {
+      let allTags = [];
+      if(this.tags) { allTags = allTags.concat(this.tags);}
+      if(this.smartTags) { allTags = allTags.concat(this.smartTags);}
+
+      for(let tag of allTags) {
+        var validNotes = SNNote.filterDummyNotes(tag.notes).filter((note) => {
           return !note.archived && !note.content.trashed;
         });
 
         tag.cachedNoteCount = validNotes.length;
       }
-    });
-
+    }
 
     this.panelController = {};
 
@@ -108,8 +104,8 @@ angular.module('app')
       }
       this.selectedTag = tag;
       if(tag.content.conflict_of) {
-        tag.content.conflict_of = null; // clear conflict
-        tag.setDirty(true, true);
+        tag.content.conflict_of = null;
+        modelManager.setItemDirty(tag, true);
         syncManager.sync();
       }
       this.selectionMade()(tag);

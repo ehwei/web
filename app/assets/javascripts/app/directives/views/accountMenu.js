@@ -10,9 +10,10 @@ class AccountMenu {
   }
 
   controller($scope, $rootScope, authManager, modelManager, syncManager, storageManager, dbManager, passcodeManager,
-    $timeout, $compile, archiveManager, privilegesManager) {
+    $timeout, $compile, archiveManager, privilegesManager, appVersion) {
     'ngInject';
 
+    $scope.appVersion = "v" + appVersion;
     $scope.formData = {mergeLocal: true, ephemeral: false};
 
     $scope.user = authManager.user;
@@ -300,7 +301,7 @@ class AccountMenu {
           if(item.content_type == "SN|Component") { item.active = false; }
         }
 
-        syncManager.sync({additionalFields: ["created_at", "updated_at"]}).then((response) => {
+        syncManager.sync().then((response) => {
           // Response can be null if syncing offline
           callback(response, errorCount);
         });

@@ -196,7 +196,7 @@ angular.module('app')
 
       modelManager.addItemSyncObserver("footer-bar-themes", "SN|Theme", (allItems, validItems, deletedItems, source) => {
         let themes = modelManager.validItemsForContentType("SN|Theme").filter((candidate) => {
-          return !candidate.deleted && candidate.content.package_info.dock_icon;
+          return !candidate.deleted && candidate.content.package_info && candidate.content.package_info.dock_icon;
         }).sort((a, b) => {
           return a.name.toLowerCase() < b.name.toLowerCase() ? -1 : 1;
         });
@@ -213,11 +213,13 @@ angular.module('app')
       this.reloadDockShortcuts = function() {
         let shortcuts = [];
         for(var theme of this.themesWithIcons) {
+          var name = theme.content.package_info.name;
           var icon = theme.content.package_info.dock_icon;
           if(!icon) {
             continue;
           }
           shortcuts.push({
+            name: name,
             component: theme,
             icon: icon
           })

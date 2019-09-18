@@ -41,14 +41,21 @@ class NativeExtManager {
         }
       }
 
+      // Handle addition of SN|ExtensionRepo permission
+      let permission = resolvedSingleton.content.permissions.find((p) => p.name == "stream-items");
+      if(!permission.content_types.includes("SN|ExtensionRepo")) {
+        permission.content_types.push("SN|ExtensionRepo");
+        needsSync = true;
+      }
+
       if(needsSync) {
-        resolvedSingleton.setDirty(true);
+        this.modelManager.setItemDirty(resolvedSingleton, true);
         this.syncManager.sync();
       }
     }, (valueCallback) => {
       // Safe to create. Create and return object.
       let url = window._extensions_manager_location;
-      console.log("Installing Extensions Manager from URL", url);
+      // console.log("Installing Extensions Manager from URL", url);
       if(!url) {
         console.error("window._extensions_manager_location must be set.");
         return;
@@ -68,7 +75,10 @@ class NativeExtManager {
           permissions: [
             {
               name: "stream-items",
-              content_types: ["SN|Component", "SN|Theme", "SF|Extension", "Extension", "SF|MFA", "SN|Editor"]
+              content_types: [
+                "SN|Component", "SN|Theme", "SF|Extension",
+                "Extension", "SF|MFA", "SN|Editor", "SN|ExtensionRepo"
+              ]
             }
           ]
         }
@@ -83,7 +93,7 @@ class NativeExtManager {
       var component = this.modelManager.createItem(item);
       this.modelManager.addItem(component);
 
-      component.setDirty(true);
+      this.modelManager.setItemDirty(component, true);
       this.syncManager.sync();
 
       this.systemExtensions.push(component.uuid);
@@ -115,13 +125,13 @@ class NativeExtManager {
       }
 
       if(needsSync) {
-        resolvedSingleton.setDirty(true);
+        this.modelManager.setItemDirty(resolvedSingleton, true);
         this.syncManager.sync();
       }
     }, (valueCallback) => {
       // Safe to create. Create and return object.
       let url = window._batch_manager_location;
-      console.log("Installing Batch Manager from URL", url);
+      // console.log("Installing Batch Manager from URL", url);
       if(!url) {
         console.error("window._batch_manager_location must be set.");
         return;
@@ -141,7 +151,12 @@ class NativeExtManager {
           permissions: [
             {
               name: "stream-items",
-              content_types: ["Note", "Tag", "SN|Component", "SN|Theme", "SF|Extension", "Extension", "SF|MFA", "SN|Editor", "SN|UserPreferences"]
+              content_types: [
+                "Note", "Tag", "SN|SmartTag",
+                "SN|Component", "SN|Theme", "SN|UserPreferences",
+                "SF|Extension", "Extension", "SF|MFA", "SN|Editor",
+                "SN|FileSafe|Credentials", "SN|FileSafe|FileMetadata", "SN|FileSafe|Integration"
+              ]
             }
           ]
         }
@@ -156,7 +171,7 @@ class NativeExtManager {
       var component = this.modelManager.createItem(item);
       this.modelManager.addItem(component);
 
-      component.setDirty(true);
+      this.modelManager.setItemDirty(component, true);
       this.syncManager.sync();
 
       this.systemExtensions.push(component.uuid);
