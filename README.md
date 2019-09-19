@@ -9,11 +9,14 @@ What is this?
  What's different?
 
  - Press CTRL-F to jump to the search box
+ - Press CTRL-D in the notelist to delete a note. (In a browser this also adds a bookmark, but the primary use is on the desktop)
  - Press enter in the search box to create a note
  - When you select a note, it's auto-focused
  - Press the cursor keys to move in search results
- - Press delete to trash a note from the notelist
  - Much more compact notelist so you can see more
+ - No confirmation popup on delete (we have the bin, anyway)
+ - 'Infinite scroll' loads ALL items the first time you scroll (reasonable balance of speed and having real scrolling)
+ - Distracting, flickering 'Saving...'/'Saved' status line is gone.
 
 Why a fork instead of individual Extensions and Themes?
 
@@ -27,6 +30,8 @@ Is there a desktop version?
 Is there a mobile version?
 
  - Not yet. The mobile version will need to work slightly differently anyway, lacking a keyboard. 
+
+# Standard Notes
 
 ### A safe and private place for your life's work.
 
