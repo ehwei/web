@@ -5,7 +5,7 @@ module.exports = function(grunt) {
     watch: {
       haml: {
         files: ['app/assets/templates/**/*.haml'],
-        tasks: ['newer:haml', 'ngtemplates', 'concat:app', 'babel', 'browserify', 'concat:dist', 'ngAnnotate'],
+        tasks: ['newer:haml', 'ngtemplates', 'concat:app', 'babel', 'browserify', 'concat:dist', 'clean'],
         options: {
           spawn: false,
         },
@@ -13,7 +13,8 @@ module.exports = function(grunt) {
 
       js: {
         files: ['app/assets/javascripts/**/*.js'],
-        tasks: [ 'concat:app', 'babel', 'browserify', 'concat:dist', 'ngAnnotate'],
+        tasks: ['haml', 'ngtemplates', 'sass', 'concat:app', 'babel', 'browserify',
+        'concat:lib', 'concat:dist', 'concat:css', 'uglify', 'ngconstant:build', 'clean'],
         options: {
           spawn: false,
         },
@@ -85,6 +86,7 @@ module.exports = function(grunt) {
          src: [
            'node_modules/standard-file-js/dist/regenerator.js',
            'node_modules/standard-file-js/dist/sfjs.js',
+           'node_modules/sn-stylekit/dist/stylekit.js',
            'node_modules/angular/angular.js',
            'vendor/assets/javascripts/angular-sanitize.js',
            'vendor/assets/javascripts/lodash/lodash.custom.min.js'
@@ -111,8 +113,7 @@ module.exports = function(grunt) {
 
      babel: {
           options: {
-              sourceMap: true,
-              presets: ['es2016']
+              sourceMap: true
           },
           dist: {
               files: {
@@ -128,18 +129,6 @@ module.exports = function(grunt) {
           },
           options: {
           }
-        }
-      },
-
-     ngAnnotate: {
-       options: {
-          singleQuotes: true,
-        },
-
-        sn: {
-          files: {
-            'dist/javascripts/compiled.js': 'dist/javascripts/compiled.js',
-          },
         }
       },
 
@@ -162,6 +151,14 @@ module.exports = function(grunt) {
        build: {
        }
      },
+
+     clean: [
+       'dist/javascripts/app.js',
+       'dist/javascripts/lib.js',
+       'dist/javascripts/templates.js',
+       'dist/javascripts/transpiled.js',
+       'dist/javascripts/transpiled.js.map',
+     ]
   });
 
   grunt.loadNpmTasks('grunt-newer');
@@ -171,17 +168,17 @@ module.exports = function(grunt) {
   grunt.loadNpmTasks('grunt-contrib-cssmin');
   grunt.loadNpmTasks('grunt-contrib-concat');
   grunt.loadNpmTasks('grunt-contrib-sass');
-  grunt.loadNpmTasks('grunt-ng-annotate');
   grunt.loadNpmTasks('grunt-contrib-uglify');
   grunt.loadNpmTasks('grunt-babel');
   grunt.loadNpmTasks('grunt-browserify');
   grunt.loadNpmTasks('grunt-ng-constant');
+  grunt.loadNpmTasks('grunt-contrib-clean');
 
   grunt.registerTask('default', ['haml', 'ngtemplates', 'sass', 'concat:app', 'babel', 'browserify',
-  'concat:lib', 'concat:dist', 'ngAnnotate', 'concat:css', 'uglify', 'ngconstant:build']);
+  'concat:lib', 'concat:dist', 'concat:css', 'uglify', 'ngconstant:build', 'clean']);
 
   grunt.registerTask('vendor', ['concat:app', 'sass', 'babel', 'browserify',
-  'concat:lib', 'concat:dist', 'ngAnnotate', 'concat:css', 'uglify']);
+  'concat:lib', 'concat:dist', 'concat:css', 'uglify']);
 
   grunt.registerTask('constants', ['ngconstant:build'])
 };

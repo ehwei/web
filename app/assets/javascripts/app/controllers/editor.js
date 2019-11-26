@@ -24,7 +24,7 @@ angular.module('app')
   })
   .controller('EditorCtrl', function ($sce, $timeout, authManager, $rootScope, actionsManager,
     syncManager, modelManager, themeManager, componentManager, storageManager, sessionHistory,
-    privilegesManager, keyboardManager, desktopManager) {
+    privilegesManager, keyboardManager, desktopManager, alertManager) {
 
     this.spellcheck = true;
     this.componentManager = componentManager;
@@ -193,9 +193,7 @@ angular.module('app')
       }
 
       if(oldNote && oldNote != note) {
-        if(oldNote.dirty) {
-          this.saveNote(oldNote);
-        } else if(oldNote.dummy) {
+        if(oldNote.dummy) {
           this.remove()(oldNote);
         }
       }
@@ -289,12 +287,12 @@ angular.module('app')
       note.dummy = false;
 
       if(note.deleted) {
-        alert("The note you are attempting to edit has been deleted, and is awaiting sync. Changes you make will be disregarded.");
+        alertManager.alert({text: "The note you are attempting to edit has been deleted, and is awaiting sync. Changes you make will be disregarded."});
         return;
       }
 
       if(!modelManager.findItem(note.uuid)) {
-        alert("The note you are attempting to save can not be found or has been deleted. Changes you make will not be synced. Please copy this note's text and start a new note.");
+        alertManager.alert({text: "The note you are attempting to save can not be found or has been deleted. Changes you make will not be synced. Please copy this note's text and start a new note."});
         return;
       }
 
@@ -326,7 +324,7 @@ angular.module('app')
         syncManager.sync().then((response) => {
           if(response && response.error && !this.didShowErrorAlert) {
             this.didShowErrorAlert = true;
-            alert("There was an error saving your note. Please try again.");
+            alertManager.alert({text: "There was an error saving your note. Please try again."});
           }
         })
       }, syncDebouceMs)
@@ -408,17 +406,33 @@ angular.module('app')
       }
     }
 
+/* Standard velocity change: If it's just going to trash (which is undoable), don't prompt. */
     this.deleteNote = async function(permanently) {
+      if(this.note.dummy) {
+        alertManager.alert({text: "This note is a placeholder and cannot be deleted. To remove from your list, simply navigate to a different note."});
+        return;
+      }
+
       let run = () => {
         $timeout(() => {
           if(this.note.locked) {
-            alert("This note is locked. If you'd like to delete it, unlock it, and try again.");
+            alertManager.alert("This note is locked. If you'd like to delete it, unlock it, and try again.");
             return;
           }
 
           let title = this.note.safeTitle().length ? `'${this.note.title}'` : "this note";
-          let message = `Are you sure you want to permanently delete ${title}?`;
-          if(!permanently || confirm(message)) {
+          let text = permanently ? `Are you sure you want to permanently delete ${title}?`
+            : `Are you sure you want to move ${title} to the trash?`
+
+          //Slightly awkward code style here to make future merges easier.
+          if (!permanently) {
+			this.note.content.trashed = true;
+            this.saveNote({bypassDebouncer: true, dontUpdatePreviews: true});
+            this.showMenu = false;
+            return;
+          }
+
+          alertManager.confirm({text, destructive: true, onConfirm: () => {
             if(permanently) {
               this.remove()(this.note);
             } else {
@@ -426,7 +440,7 @@ angular.module('app')
               this.saveNote({bypassDebouncer: true, dontUpdatePreviews: true});
             }
             this.showMenu = false;
-          }
+          }})
         });
       }
 
@@ -454,10 +468,10 @@ angular.module('app')
 
     this.emptyTrash = function() {
       let count = this.getTrashCount();
-      if(confirm(`Are you sure you want to permanently delete ${count} note(s)?`)) {
+      alertManager.confirm({text: `Are you sure you want to permanently delete ${count} note(s)?`, destructive: true, onConfirm: () => {
         modelManager.emptyTrash();
         syncManager.sync();
-      }
+      }})
     }
 
     this.togglePin = function() {
